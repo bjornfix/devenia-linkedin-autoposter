@@ -6,7 +6,7 @@ Tags: linkedin, social, autoposter, share, automation
 Requires at least: 5.4
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.1.0
+Stable tag: 1.2.0
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
 
@@ -80,6 +80,11 @@ No. The plugin only shares posts when they transition from draft/pending to publ
 Yes! Go to Settings > LinkedIn Autoposter and customize the post template. Available tags: {title}, {excerpt}, {url}, {author}
 
 == Changelog ==
+
+= 1.2.0 =
+* Fixed: Posts now include clickable link preview with title, description, and thumbnail
+* Added: Featured image is used as article thumbnail in LinkedIn posts
+* Changed: URLs in posts are now proper article attachments, not just text
 
 = 1.1.0 =
 * Added: Post to company page option

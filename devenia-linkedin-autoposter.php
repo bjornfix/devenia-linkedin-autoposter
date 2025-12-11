@@ -3,7 +3,7 @@
  * Plugin Name: Devenia LinkedIn Autoposter
  * Plugin URI: https://devenia.com/
  * Description: Automatically share posts to LinkedIn when published. Uses official LinkedIn API - no scraping, no bloat.
- * Version: 1.1.0
+ * Version: 1.2.0
  * Author: Devenia
  * Author URI: https://devenia.com/
  * License: GPL-2.0+
@@ -16,7 +16,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('DLAP_VERSION', '1.1.0');
+define('DLAP_VERSION', '1.2.0');
 define('DLAP_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('DLAP_PLUGIN_URL', plugin_dir_url(__FILE__));
 
@@ -690,24 +690,32 @@ class Devenia_LinkedIn_Autoposter {
 {url}';
 
         $excerpt = has_excerpt($post->ID) ? get_the_excerpt($post) : wp_trim_words($post->post_content, 30, '...');
+        $post_url = get_permalink($post);
+        $post_title = get_the_title($post);
 
         $content = str_replace(
             array('{title}', '{excerpt}', '{url}', '{author}'),
             array(
-                get_the_title($post),
+                $post_title,
                 $excerpt,
-                get_permalink($post),
+                $post_url,
                 get_the_author_meta('display_name', $post->post_author)
             ),
             $template
         );
+
+        // Get featured image for article thumbnail
+        $thumbnail_url = null;
+        if (has_post_thumbnail($post->ID)) {
+            $thumbnail_url = get_the_post_thumbnail_url($post->ID, 'large');
+        }
 
         $results = array();
 
         // Post to personal profile if target is personal or both
         if ($post_target === 'personal' || $post_target === 'both') {
             if ($member_id) {
-                $result = $this->post_to_linkedin($access_token, 'urn:li:person:' . $member_id, $content);
+                $result = $this->post_to_linkedin($access_token, 'urn:li:person:' . $member_id, $content, $post_url, $post_title, $excerpt, $thumbnail_url);
                 if ($result) {
                     $results['personal'] = $result;
                 } else {
@@ -718,7 +726,7 @@ class Devenia_LinkedIn_Autoposter {
 
         // Post to company page if target is organization or both
         if (($post_target === 'organization' || $post_target === 'both') && $organization_id) {
-            $result = $this->post_to_linkedin($access_token, 'urn:li:organization:' . $organization_id, $content);
+            $result = $this->post_to_linkedin($access_token, 'urn:li:organization:' . $organization_id, $content, $post_url, $post_title, $excerpt, $thumbnail_url);
             if ($result) {
                 $results['organization'] = $result;
             } else {
@@ -732,7 +740,7 @@ class Devenia_LinkedIn_Autoposter {
     /**
      * Post content to LinkedIn with specified author URN
      */
-    private function post_to_linkedin($access_token, $author_urn, $content) {
+    private function post_to_linkedin($access_token, $author_urn, $content, $article_url = null, $article_title = null, $article_description = null, $article_thumbnail = null) {
         $body = array(
             'author' => $author_urn,
             'commentary' => $content,
@@ -745,6 +753,23 @@ class Devenia_LinkedIn_Autoposter {
             'lifecycleState' => 'PUBLISHED',
             'isReshareDisabledByAuthor' => false,
         );
+
+        // Add article attachment for link preview if URL provided
+        if ($article_url) {
+            $article = array(
+                'source' => $article_url,
+                'title' => $article_title ?: $article_url,
+            );
+            if ($article_description) {
+                $article['description'] = $article_description;
+            }
+            if ($article_thumbnail) {
+                $article['thumbnail'] = $article_thumbnail;
+            }
+            $body['content'] = array(
+                'article' => $article,
+            );
+        }
 
         $response = wp_remote_post('https://api.linkedin.com/rest/posts', array(
             'headers' => array(
