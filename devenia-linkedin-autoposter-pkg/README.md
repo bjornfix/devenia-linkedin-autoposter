@@ -62,10 +62,6 @@ No. Only shares when posts transition from draft/pending to published.
 
 ## Changelog
 
-### 1.4.1
-- **Fixed**: Excerpt word limit increased from 30 to 150 words (no more text cutoff)
-- LinkedIn allows 3000 characters - now you get proper content length
-
 ### 1.4.0
 - **Changed**: Posts now use image-only format for maximum LinkedIn reach
 - **Removed**: URL-in-comment feature (requires Community Management API which conflicts with other products)

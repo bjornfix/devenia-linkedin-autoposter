@@ -6,7 +6,7 @@ Tags: linkedin, social, autoposter, share, automation
 Requires at least: 5.4
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.4.1
+Stable tag: 1.4.0
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
 
@@ -84,10 +84,6 @@ Yes! Go to Settings > LinkedIn Autoposter and customize the post template. Avail
 LinkedIn's algorithm deprioritizes posts with external links. For maximum reach, we post image-only content. Add your URL manually as the first comment on LinkedIn - this can increase engagement by 20-40%.
 
 == Changelog ==
-
-= 1.4.1 =
-* Fixed: Excerpt word limit increased from 30 to 150 words (no more text cutoff)
-* LinkedIn allows 3000 characters - now you get proper content length
 
 = 1.4.0 =
 * Changed: Posts now use image-only format for maximum LinkedIn reach
