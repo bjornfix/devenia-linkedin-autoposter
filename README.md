@@ -62,6 +62,10 @@ No. Only shares when posts transition from draft/pending to published.
 
 ## Changelog
 
+### 1.3.0
+- **New: URL in first comment option** - LinkedIn deprioritizes posts with external links. This option posts the URL as a comment instead, which can increase reach by 20-40%
+- Enable in Settings > LinkedIn Autoposter > "URL Placement"
+
 ### 1.2.2
 - Fixed: Ensure excerpt/text always appears in LinkedIn post commentary
 - Improved: Better excerpt extraction from post content (strips shortcodes/HTML)
