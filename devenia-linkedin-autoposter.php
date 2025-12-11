@@ -74,6 +74,9 @@ class Devenia_LinkedIn_Autoposter {
 
         // REST API endpoint for debug info
         add_action('rest_api_init', array($this, 'register_rest_routes'));
+
+        // AJAX fallback for debug info (in case REST is cached)
+        add_action('wp_ajax_dlap_debug', array($this, 'ajax_debug_info'));
     }
 
     /**
@@ -98,6 +101,20 @@ class Devenia_LinkedIn_Autoposter {
             'image_debug' => get_transient('dlap_image_debug'),
             'last_error' => get_transient('dlap_last_error'),
         );
+    }
+
+    /**
+     * AJAX endpoint for debug info
+     */
+    public function ajax_debug_info() {
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Unauthorized', 403);
+        }
+        wp_send_json_success(array(
+            'comment_debug' => get_transient('dlap_comment_debug'),
+            'image_debug' => get_transient('dlap_image_debug'),
+            'last_error' => get_transient('dlap_last_error'),
+        ));
     }
 
     /**
