@@ -62,6 +62,11 @@ No. Only shares when posts transition from draft/pending to published.
 
 ## Changelog
 
+### 1.2.0
+- Fixed: Posts now include clickable link preview with title, description, and thumbnail
+- Added: Featured image is used as article thumbnail in LinkedIn posts
+- Changed: URLs in posts are now proper article attachments, not just text
+
 ### 1.1.0
 - Added: Post to company page option
 - Added: Post to both personal + company simultaneously
