@@ -3,7 +3,7 @@
  * Plugin Name: Devenia LinkedIn Autoposter
  * Plugin URI: https://devenia.com/
  * Description: Automatically share posts to LinkedIn when published. Uses official LinkedIn API - no scraping, no bloat.
- * Version: 1.5.2
+ * Version: 1.5.3
  * Author: Devenia
  * Author URI: https://devenia.com/
  * License: GPL-2.0+
@@ -16,7 +16,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('DLAP_VERSION', '1.5.2');
+define('DLAP_VERSION', '1.5.3');
 define('DLAP_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('DLAP_PLUGIN_URL', plugin_dir_url(__FILE__));
 
@@ -1060,10 +1060,22 @@ class Devenia_LinkedIn_Autoposter {
             $excerpt = get_the_excerpt($post);
         }
         if (empty($excerpt)) {
-            // Strip shortcodes and HTML, then trim
-            // LinkedIn allows up to 3000 chars (~500 words), so we use 450 words to leave room for title
-            $clean_content = wp_strip_all_tags(strip_shortcodes($post->post_content));
-            $excerpt = wp_trim_words($clean_content, 450, '...');
+            // Strip shortcodes and HTML, but preserve paragraph breaks for LinkedIn readability
+            $content_with_breaks = strip_shortcodes($post->post_content);
+            // Convert paragraph and line break tags to newlines before stripping HTML
+            $content_with_breaks = preg_replace('/<\/p>\s*<p[^>]*>/i', "\n\n", $content_with_breaks);
+            $content_with_breaks = preg_replace('/<br\s*\/?>/i', "\n", $content_with_breaks);
+            $content_with_breaks = preg_replace('/<\/?(p|div|h[1-6])[^>]*>/i', "\n\n", $content_with_breaks);
+            $clean_content = wp_strip_all_tags($content_with_breaks);
+            // Clean up excessive newlines but preserve paragraph breaks
+            $clean_content = preg_replace('/[ \t]+/', ' ', $clean_content); // Collapse spaces/tabs
+            $clean_content = preg_replace('/\n{3,}/', "\n\n", $clean_content); // Max 2 newlines
+            $clean_content = trim($clean_content);
+            // Trim to ~2700 chars (LinkedIn limit is 3000, leave room for title)
+            if (strlen($clean_content) > 2700) {
+                $clean_content = substr($clean_content, 0, 2697) . '...';
+            }
+            $excerpt = $clean_content;
         }
         if (empty($excerpt)) {
             $excerpt = $post_title; // Fallback to title if no content
