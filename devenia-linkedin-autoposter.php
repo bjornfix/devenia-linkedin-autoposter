@@ -953,30 +953,20 @@ class Devenia_LinkedIn_Autoposter {
     private function add_comment_to_post($access_token, $actor_urn, $post_urn, $comment_text) {
         // The post URN from x-restli-id is urn:li:share:xxx or urn:li:ugcPost:xxx
         // For comments API:
-        // - URL path uses the post URN directly (urn:li:share:xxx)
-        // - object field uses urn:li:activity:xxx with the same ID
-
-        // Extract the numeric ID from the URN for the activity URN
-        $post_id = $post_urn;
-        if (strpos($post_urn, 'urn:li:') === 0) {
-            $parts = explode(':', $post_urn);
-            $post_id = end($parts);
-        }
-
-        // Build activity URN for the object field
-        $activity_urn = 'urn:li:activity:' . $post_id;
+        // - URL path uses the post URN (urn:li:share:xxx or urn:li:ugcPost:xxx)
+        // - object field also accepts the same URN types (share, ugcPost, or activity)
+        // Using the same URN in both places should work according to the API docs
 
         $body = array(
             'actor' => $actor_urn,
-            'object' => $activity_urn,
+            'object' => $post_urn,  // Use the same URN as in URL path - API accepts share/ugcPost URNs
             'message' => array(
                 'text' => $comment_text,
             ),
         );
 
         // Log for debugging
-        error_log('DLAP Comment Debug - Post URN (for URL): ' . $post_urn);
-        error_log('DLAP Comment Debug - Activity URN (for object): ' . $activity_urn);
+        error_log('DLAP Comment Debug - Post URN (for URL and object): ' . $post_urn);
         error_log('DLAP Comment Debug - Actor URN: ' . $actor_urn);
         error_log('DLAP Comment Debug - Comment text: ' . $comment_text);
 

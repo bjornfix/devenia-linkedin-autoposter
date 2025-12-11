@@ -82,10 +82,9 @@ Yes! Go to Settings > LinkedIn Autoposter and customize the post template. Avail
 == Changelog ==
 
 = 1.3.5 =
-* Fixed: Images now appear in "URL in first comment" mode
-* Previously, image posts required uploading to LinkedIn's Images API
-* Now properly uploads featured image/fallback image to LinkedIn before creating post
-* Added: Extensive debug logging for image uploads (DLAP Image Upload in error log)
+* Fixed: Images now appear in "URL in first comment" mode - uploads via LinkedIn Images API
+* Fixed: Comments API now uses correct URN format in object field (share/ugcPost instead of activity)
+* Added: Extensive debug logging for image uploads and comment posting
 
 = 1.3.4 =
 * Changed: Image priority order - Default Image now comes before Site Logo
