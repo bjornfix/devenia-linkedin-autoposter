@@ -983,6 +983,12 @@ class Devenia_LinkedIn_Autoposter {
 
         if (is_wp_error($response)) {
             error_log('DLAP Comment Error: ' . $response->get_error_message());
+            set_transient('dlap_comment_debug', array(
+                'error' => $response->get_error_message(),
+                'post_urn' => $post_urn,
+                'actor_urn' => $actor_urn,
+                'time' => current_time('mysql'),
+            ), 3600);
             return false;
         }
 
@@ -990,6 +996,17 @@ class Devenia_LinkedIn_Autoposter {
         $response_body = wp_remote_retrieve_body($response);
         error_log('DLAP Comment Response Code: ' . $response_code);
         error_log('DLAP Comment Response Body: ' . $response_body);
+
+        // Store debug info in transient for troubleshooting
+        set_transient('dlap_comment_debug', array(
+            'response_code' => $response_code,
+            'response_body' => $response_body,
+            'post_urn' => $post_urn,
+            'actor_urn' => $actor_urn,
+            'comment_text' => $comment_text,
+            'request_body' => wp_json_encode($body),
+            'time' => current_time('mysql'),
+        ), 3600);
 
         if ($response_code === 201) {
             return wp_remote_retrieve_header($response, 'x-restli-id');
