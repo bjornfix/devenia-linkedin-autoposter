@@ -62,6 +62,10 @@ No. Only shares when posts transition from draft/pending to published.
 
 ## Changelog
 
+### 1.3.1
+- New: Default fallback image setting - specify a URL to use when post has no images
+- Image priority: Featured Image → First post image → Site Logo → Default Image setting
+
 ### 1.3.0
 - **New: URL in first comment option** - LinkedIn deprioritizes posts with external links. This option posts the URL as a comment instead, which can increase reach by 20-40%
 - Enable in Settings > LinkedIn Autoposter > "URL Placement"

@@ -3,7 +3,7 @@
  * Plugin Name: Devenia LinkedIn Autoposter
  * Plugin URI: https://devenia.com/
  * Description: Automatically share posts to LinkedIn when published. Uses official LinkedIn API - no scraping, no bloat.
- * Version: 1.3.0
+ * Version: 1.3.1
  * Author: Devenia
  * Author URI: https://devenia.com/
  * License: GPL-2.0+
@@ -16,7 +16,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('DLAP_VERSION', '1.3.0');
+define('DLAP_VERSION', '1.3.1');
 define('DLAP_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('DLAP_PLUGIN_URL', plugin_dir_url(__FILE__));
 
@@ -212,6 +212,14 @@ class Devenia_LinkedIn_Autoposter {
             'dlap-settings',
             'dlap_post_section'
         );
+
+        add_settings_field(
+            'default_image',
+            'Default Image',
+            array($this, 'render_default_image_field'),
+            'dlap-settings',
+            'dlap_post_section'
+        );
     }
 
     /**
@@ -230,6 +238,7 @@ class Devenia_LinkedIn_Autoposter {
 
 {url}');
         $sanitized['url_in_comment'] = isset($input['url_in_comment']) ? (bool) $input['url_in_comment'] : false;
+        $sanitized['default_image'] = esc_url_raw($input['default_image'] ?? '');
         return $sanitized;
     }
 
@@ -406,6 +415,14 @@ class Devenia_LinkedIn_Autoposter {
         <p class="description">LinkedIn deprioritizes posts with external links. Posting the URL as a comment instead can increase reach by 20-40%.</p>
         <p class="description"><strong>Note:</strong> When enabled, the {url} tag will be removed from the main post and posted as the first comment instead.</p>
         <?php
+    }
+
+    public function render_default_image_field() {
+        $options = get_option('dlap_settings', array());
+        $value = isset($options['default_image']) ? $options['default_image'] : '';
+        echo '<input type="url" name="dlap_settings[default_image]" value="' . esc_attr($value) . '" class="large-text" placeholder="https://example.com/default-image.jpg">';
+        echo '<p class="description">Fallback image URL if post has no featured image and no images in content. Used for LinkedIn article thumbnail.</p>';
+        echo '<p class="description">Image priority: Featured Image → First image in post → Site Logo → This default image</p>';
     }
 
     /**
@@ -776,6 +793,14 @@ class Devenia_LinkedIn_Autoposter {
             $custom_logo_id = get_theme_mod('custom_logo');
             if ($custom_logo_id) {
                 $thumbnail_url = wp_get_attachment_image_url($custom_logo_id, 'full');
+            }
+        }
+
+        // Final fallback: use default image from settings
+        if (empty($thumbnail_url)) {
+            $default_image = isset($options['default_image']) ? $options['default_image'] : '';
+            if (!empty($default_image)) {
+                $thumbnail_url = $default_image;
             }
         }
 
