@@ -62,6 +62,9 @@ No. Only shares when posts transition from draft/pending to published.
 
 ## Changelog
 
+### 1.5.2
+- **New**: Gallery images are now set as featured image on the post (same image on LinkedIn and website)
+
 ### 1.5.1
 - Added: Image size recommendations in settings (1200x1200 square recommended)
 

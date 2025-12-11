@@ -3,7 +3,7 @@
  * Plugin Name: Devenia LinkedIn Autoposter
  * Plugin URI: https://devenia.com/
  * Description: Automatically share posts to LinkedIn when published. Uses official LinkedIn API - no scraping, no bloat.
- * Version: 1.5.1
+ * Version: 1.5.2
  * Author: Devenia
  * Author URI: https://devenia.com/
  * License: GPL-2.0+
@@ -16,7 +16,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('DLAP_VERSION', '1.5.1');
+define('DLAP_VERSION', '1.5.2');
 define('DLAP_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('DLAP_PLUGIN_URL', plugin_dir_url(__FILE__));
 
@@ -916,15 +916,19 @@ class Devenia_LinkedIn_Autoposter {
     /**
      * Get image URL for LinkedIn post based on settings
      * Handles gallery rotation, featured images, and fallbacks
+     * Also sets the gallery image as featured image when used
      */
     private function get_linkedin_image($post, $options) {
         $image_source = isset($options['image_source']) ? $options['image_source'] : 'featured_first';
         $gallery_ids = isset($options['image_gallery']) ? $options['image_gallery'] : array();
 
         $thumbnail_url = null;
+        $use_gallery_image = false;
 
-        // Get gallery image (with rotation)
-        $gallery_image_url = $this->get_next_gallery_image($gallery_ids);
+        // Get gallery image (with rotation) - returns array with 'url' and 'id'
+        $gallery_image = $this->get_next_gallery_image($gallery_ids);
+        $gallery_image_url = $gallery_image ? $gallery_image['url'] : null;
+        $gallery_image_id = $gallery_image ? $gallery_image['id'] : null;
 
         // Get featured image
         $featured_image_url = null;
@@ -946,12 +950,14 @@ class Devenia_LinkedIn_Autoposter {
             case 'gallery_only':
                 // Only use gallery, return null if empty (will skip post)
                 $thumbnail_url = $gallery_image_url;
+                $use_gallery_image = true;
                 break;
 
             case 'gallery_first':
                 // Gallery takes priority, then featured, then content, then fallbacks
                 if ($gallery_image_url) {
                     $thumbnail_url = $gallery_image_url;
+                    $use_gallery_image = true;
                 } elseif ($featured_image_url) {
                     $thumbnail_url = $featured_image_url;
                 } elseif ($content_image_url) {
@@ -968,8 +974,14 @@ class Devenia_LinkedIn_Autoposter {
                     $thumbnail_url = $content_image_url;
                 } elseif ($gallery_image_url) {
                     $thumbnail_url = $gallery_image_url;
+                    $use_gallery_image = true;
                 }
                 break;
+        }
+
+        // If using gallery image, set it as the post's featured image too
+        if ($use_gallery_image && $gallery_image_id && $thumbnail_url) {
+            set_post_thumbnail($post->ID, $gallery_image_id);
         }
 
         // Fallback to default image if still no image
@@ -997,7 +1009,7 @@ class Devenia_LinkedIn_Autoposter {
 
     /**
      * Get next image from gallery rotation
-     * Returns URL and increments rotation counter
+     * Returns array with 'url' and 'id', increments rotation counter
      */
     private function get_next_gallery_image($gallery_ids) {
         if (empty($gallery_ids)) {
@@ -1015,7 +1027,10 @@ class Devenia_LinkedIn_Autoposter {
         // Increment rotation for next post
         update_option('dlap_gallery_rotation_index', $rotation_index + 1);
 
-        return $image_url;
+        return array(
+            'url' => $image_url,
+            'id' => $image_id
+        );
     }
 
     /**
