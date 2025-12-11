@@ -62,6 +62,9 @@ No. Only shares when posts transition from draft/pending to published.
 
 ## Changelog
 
+### 1.4.2
+- **Fixed**: Excerpt word limit increased to 450 words (~2700 chars) to properly use LinkedIn's 3000 char limit
+
 ### 1.4.1
 - **Fixed**: Excerpt word limit increased from 30 to 150 words (no more text cutoff)
 - LinkedIn allows 3000 characters - now you get proper content length

@@ -3,7 +3,7 @@
  * Plugin Name: Devenia LinkedIn Autoposter
  * Plugin URI: https://devenia.com/
  * Description: Automatically share posts to LinkedIn when published. Uses official LinkedIn API - no scraping, no bloat.
- * Version: 1.4.1
+ * Version: 1.4.2
  * Author: Devenia
  * Author URI: https://devenia.com/
  * License: GPL-2.0+
@@ -16,7 +16,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('DLAP_VERSION', '1.4.1');
+define('DLAP_VERSION', '1.4.2');
 define('DLAP_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('DLAP_PLUGIN_URL', plugin_dir_url(__FILE__));
 
@@ -785,9 +785,9 @@ class Devenia_LinkedIn_Autoposter {
         }
         if (empty($excerpt)) {
             // Strip shortcodes and HTML, then trim
-            // LinkedIn allows up to 3000 chars, so we use 150 words (~900 chars) for auto-excerpt
+            // LinkedIn allows up to 3000 chars (~500 words), so we use 450 words to leave room for title
             $clean_content = wp_strip_all_tags(strip_shortcodes($post->post_content));
-            $excerpt = wp_trim_words($clean_content, 150, '...');
+            $excerpt = wp_trim_words($clean_content, 450, '...');
         }
         if (empty($excerpt)) {
             $excerpt = $post_title; // Fallback to title if no content
