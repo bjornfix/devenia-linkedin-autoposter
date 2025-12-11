@@ -71,6 +71,33 @@ class Devenia_LinkedIn_Autoposter {
         if (!wp_next_scheduled('dlap_daily_check')) {
             wp_schedule_event(time(), 'daily', 'dlap_daily_check');
         }
+
+        // REST API endpoint for debug info
+        add_action('rest_api_init', array($this, 'register_rest_routes'));
+    }
+
+    /**
+     * Register REST API routes for debugging
+     */
+    public function register_rest_routes() {
+        register_rest_route('dlap/v1', '/debug', array(
+            'methods' => 'GET',
+            'callback' => array($this, 'get_debug_info'),
+            'permission_callback' => function() {
+                return current_user_can('manage_options');
+            },
+        ));
+    }
+
+    /**
+     * Get debug info via REST API
+     */
+    public function get_debug_info() {
+        return array(
+            'comment_debug' => get_transient('dlap_comment_debug'),
+            'image_debug' => get_transient('dlap_image_debug'),
+            'last_error' => get_transient('dlap_last_error'),
+        );
     }
 
     /**
