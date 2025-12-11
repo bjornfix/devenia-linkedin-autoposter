@@ -63,6 +63,7 @@ No. Only shares when posts transition from draft/pending to published.
 ## Changelog
 
 ### 1.3.5
+- Fixed: Updated LinkedIn API version from 202411 (sunset) to 202501
 - Fixed: Images now appear in "URL in first comment" mode - uploads via LinkedIn Images API
 - Fixed: Comments API now uses correct URN format in object field
 - Added: Extensive debug logging for image uploads and comment posting

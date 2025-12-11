@@ -702,7 +702,7 @@ class Devenia_LinkedIn_Autoposter {
             'headers' => array(
                 'Authorization' => 'Bearer ' . $this->access_token,
                 'X-Restli-Protocol-Version' => '2.0.0',
-                'LinkedIn-Version' => '202411',
+                'LinkedIn-Version' => '202501',
             ),
         ));
 
@@ -975,7 +975,7 @@ class Devenia_LinkedIn_Autoposter {
             'headers' => array(
                 'Authorization' => 'Bearer ' . $access_token,
                 'X-Restli-Protocol-Version' => '2.0.0',
-                'LinkedIn-Version' => '202411',
+                'LinkedIn-Version' => '202501',
                 'Content-Type' => 'application/json',
             ),
             'body' => wp_json_encode($body),
@@ -1011,7 +1011,7 @@ class Devenia_LinkedIn_Autoposter {
             'headers' => array(
                 'Authorization' => 'Bearer ' . $access_token,
                 'X-Restli-Protocol-Version' => '2.0.0',
-                'LinkedIn-Version' => '202411',
+                'LinkedIn-Version' => '202501',
                 'Content-Type' => 'application/json',
             ),
             'body' => wp_json_encode(array(
@@ -1143,7 +1143,7 @@ class Devenia_LinkedIn_Autoposter {
             'headers' => array(
                 'Authorization' => 'Bearer ' . $access_token,
                 'X-Restli-Protocol-Version' => '2.0.0',
-                'LinkedIn-Version' => '202411',
+                'LinkedIn-Version' => '202501',
                 'Content-Type' => 'application/json',
             ),
             'body' => wp_json_encode($body),
