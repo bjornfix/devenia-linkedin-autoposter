@@ -62,6 +62,12 @@ No. Only shares when posts transition from draft/pending to published.
 
 ## Changelog
 
+### 1.4.0
+- **Changed**: Posts now use image-only format for maximum LinkedIn reach
+- **Removed**: URL-in-comment feature (requires Community Management API which conflicts with other products)
+- **Tip**: Add the post URL manually as the first comment on LinkedIn for best engagement
+- Simplified codebase with fewer API calls
+
 ### 1.3.5
 - Fixed: Updated LinkedIn API version from 202411 (sunset) to 202501
 - Fixed: Images now appear in "URL in first comment" mode - uploads via LinkedIn Images API

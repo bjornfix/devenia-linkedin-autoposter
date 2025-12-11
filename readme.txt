@@ -6,7 +6,7 @@ Tags: linkedin, social, autoposter, share, automation
 Requires at least: 5.4
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.3.5
+Stable tag: 1.4.0
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
 
@@ -77,9 +77,19 @@ No. The plugin only shares posts when they transition from draft/pending to publ
 
 = Can I customize what gets posted? =
 
-Yes! Go to Settings > LinkedIn Autoposter and customize the post template. Available tags: {title}, {excerpt}, {url}, {author}
+Yes! Go to Settings > LinkedIn Autoposter and customize the post template. Available tags: {title}, {excerpt}, {author}
+
+= Why doesn't the post include a link? =
+
+LinkedIn's algorithm deprioritizes posts with external links. For maximum reach, we post image-only content. Add your URL manually as the first comment on LinkedIn - this can increase engagement by 20-40%.
 
 == Changelog ==
+
+= 1.4.0 =
+* Changed: Posts now use image-only format for maximum LinkedIn reach
+* Removed: URL-in-comment feature (requires Community Management API which conflicts with other products)
+* Tip: Add the post URL manually as the first comment on LinkedIn for best engagement
+* Simplified: Cleaner codebase with fewer API calls
 
 = 1.3.5 =
 * Fixed: Updated LinkedIn API version from 202411 (sunset) to 202501

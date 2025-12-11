@@ -3,7 +3,7 @@
  * Plugin Name: Devenia LinkedIn Autoposter
  * Plugin URI: https://devenia.com/
  * Description: Automatically share posts to LinkedIn when published. Uses official LinkedIn API - no scraping, no bloat.
- * Version: 1.3.5
+ * Version: 1.4.0
  * Author: Devenia
  * Author URI: https://devenia.com/
  * License: GPL-2.0+
@@ -16,7 +16,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('DLAP_VERSION', '1.3.5');
+define('DLAP_VERSION', '1.4.0');
 define('DLAP_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('DLAP_PLUGIN_URL', plugin_dir_url(__FILE__));
 
@@ -71,50 +71,6 @@ class Devenia_LinkedIn_Autoposter {
         if (!wp_next_scheduled('dlap_daily_check')) {
             wp_schedule_event(time(), 'daily', 'dlap_daily_check');
         }
-
-        // REST API endpoint for debug info
-        add_action('rest_api_init', array($this, 'register_rest_routes'));
-
-        // AJAX fallback for debug info (in case REST is cached)
-        add_action('wp_ajax_dlap_debug', array($this, 'ajax_debug_info'));
-    }
-
-    /**
-     * Register REST API routes for debugging
-     */
-    public function register_rest_routes() {
-        register_rest_route('dlap/v1', '/debug', array(
-            'methods' => 'GET',
-            'callback' => array($this, 'get_debug_info'),
-            'permission_callback' => function() {
-                return current_user_can('manage_options');
-            },
-        ));
-    }
-
-    /**
-     * Get debug info via REST API
-     */
-    public function get_debug_info() {
-        return array(
-            'comment_debug' => get_transient('dlap_comment_debug'),
-            'image_debug' => get_transient('dlap_image_debug'),
-            'last_error' => get_transient('dlap_last_error'),
-        );
-    }
-
-    /**
-     * AJAX endpoint for debug info
-     */
-    public function ajax_debug_info() {
-        if (!current_user_can('manage_options')) {
-            wp_send_json_error('Unauthorized', 403);
-        }
-        wp_send_json_success(array(
-            'comment_debug' => get_transient('dlap_comment_debug'),
-            'image_debug' => get_transient('dlap_image_debug'),
-            'last_error' => get_transient('dlap_last_error'),
-        ));
     }
 
     /**
@@ -261,14 +217,6 @@ class Devenia_LinkedIn_Autoposter {
         );
 
         add_settings_field(
-            'url_in_comment',
-            'URL Placement',
-            array($this, 'render_url_in_comment_field'),
-            'dlap-settings',
-            'dlap_post_section'
-        );
-
-        add_settings_field(
             'default_image',
             'Default Image',
             array($this, 'render_default_image_field'),
@@ -289,10 +237,7 @@ class Devenia_LinkedIn_Autoposter {
         $sanitized['post_types'] = isset($input['post_types']) ? array_map('sanitize_text_field', $input['post_types']) : array('post');
         $sanitized['post_template'] = sanitize_textarea_field($input['post_template'] ?? '{title}
 
-{excerpt}
-
-{url}');
-        $sanitized['url_in_comment'] = isset($input['url_in_comment']) ? (bool) $input['url_in_comment'] : false;
+{excerpt}');
         $sanitized['default_image'] = esc_url_raw($input['default_image'] ?? '');
         $sanitized['default_image_id'] = absint($input['default_image_id'] ?? 0);
         return $sanitized;
@@ -453,24 +398,10 @@ class Devenia_LinkedIn_Autoposter {
         $options = get_option('dlap_settings', array());
         $value = isset($options['post_template']) ? $options['post_template'] : '{title}
 
-{excerpt}
-
-{url}';
+{excerpt}';
         echo '<textarea name="dlap_settings[post_template]" rows="5" class="large-text">' . esc_textarea($value) . '</textarea>';
-        echo '<p class="description">Available tags: <code>{title}</code>, <code>{excerpt}</code>, <code>{url}</code>, <code>{author}</code></p>';
-    }
-
-    public function render_url_in_comment_field() {
-        $options = get_option('dlap_settings', array());
-        $checked = isset($options['url_in_comment']) && $options['url_in_comment'];
-        ?>
-        <label>
-            <input type="checkbox" name="dlap_settings[url_in_comment]" value="1" <?php checked($checked); ?>>
-            Post URL in first comment (better reach)
-        </label>
-        <p class="description">LinkedIn deprioritizes posts with external links. Posting the URL as a comment instead can increase reach by 20-40%.</p>
-        <p class="description"><strong>Note:</strong> When enabled, the {url} tag will be removed from the main post and posted as the first comment instead.</p>
-        <?php
+        echo '<p class="description">Available tags: <code>{title}</code>, <code>{excerpt}</code>, <code>{author}</code></p>';
+        echo '<p class="description">Posts are shared as image-only for maximum reach. Add the URL manually as the first comment on LinkedIn.</p>';
     }
 
     public function render_default_image_field() {
@@ -835,7 +766,6 @@ class Devenia_LinkedIn_Autoposter {
         $options = get_option('dlap_settings', array());
         $post_target = isset($options['post_target']) ? $options['post_target'] : 'personal';
         $organization_id = isset($options['organization_id']) ? $options['organization_id'] : '';
-        $url_in_comment = isset($options['url_in_comment']) && $options['url_in_comment'];
 
         if (!$access_token) {
             return false;
@@ -844,11 +774,8 @@ class Devenia_LinkedIn_Autoposter {
         // Build post content
         $template = isset($options['post_template']) ? $options['post_template'] : '{title}
 
-{excerpt}
+{excerpt}';
 
-{url}';
-
-        $post_url = get_permalink($post);
         $post_title = get_the_title($post);
 
         // Get excerpt - try multiple sources
@@ -865,35 +792,25 @@ class Devenia_LinkedIn_Autoposter {
             $excerpt = $post_title; // Fallback to title if no content
         }
 
-        // If URL goes in comment, remove {url} from template
-        $content_url = $url_in_comment ? '' : $post_url;
-
         $content = str_replace(
-            array('{title}', '{excerpt}', '{url}', '{author}'),
+            array('{title}', '{excerpt}', '{author}'),
             array(
                 $post_title,
                 $excerpt,
-                $content_url,
                 get_the_author_meta('display_name', $post->post_author)
             ),
             $template
         );
 
-        // Clean up extra newlines if URL was removed
-        if ($url_in_comment) {
-            $content = preg_replace('/\n{3,}/', "\n\n", $content);
-        }
+        // Clean up extra newlines
+        $content = preg_replace('/\n{3,}/', "\n\n", trim($content));
 
-        // Ensure content is not empty - if template produced empty result, use default
-        $content = trim($content);
+        // Ensure content is not empty
         if (empty($content)) {
             $content = $post_title . "\n\n" . $excerpt;
-            if (!$url_in_comment) {
-                $content .= "\n\n" . $post_url;
-            }
         }
 
-        // Get featured image for article thumbnail
+        // Get image for the post (image-only mode for maximum reach)
         $thumbnail_url = null;
         if (has_post_thumbnail($post->ID)) {
             $thumbnail_url = get_the_post_thumbnail_url($post->ID, 'large');
@@ -927,13 +844,6 @@ class Devenia_LinkedIn_Autoposter {
             }
         }
 
-        // If URL in comment mode, don't include article attachment (it shows link preview)
-        // Instead, upload the image directly and create an image post
-        $article_url = $url_in_comment ? null : $post_url;
-        $article_title = $url_in_comment ? null : $post_title;
-        $article_excerpt = $url_in_comment ? null : $excerpt;
-        $article_thumbnail = $url_in_comment ? null : $thumbnail_url;
-
         $results = array();
 
         // Post to personal profile if target is personal or both
@@ -941,19 +851,15 @@ class Devenia_LinkedIn_Autoposter {
             if ($member_id) {
                 $author_urn = 'urn:li:person:' . $member_id;
 
-                // In URL-in-comment mode, upload image to LinkedIn first
+                // Upload image to LinkedIn for image-only post (maximum reach)
                 $image_urn = null;
-                if ($url_in_comment && $thumbnail_url) {
+                if ($thumbnail_url) {
                     $image_urn = $this->upload_image_to_linkedin($access_token, $author_urn, $thumbnail_url);
                 }
 
-                $result = $this->post_to_linkedin($access_token, $author_urn, $content, $article_url, $article_title, $article_excerpt, $article_thumbnail, $image_urn);
+                $result = $this->post_to_linkedin($access_token, $author_urn, $content, null, null, null, null, $image_urn);
                 if ($result) {
                     $results['personal'] = $result;
-                    // Add URL as comment if enabled
-                    if ($url_in_comment && $result) {
-                        $this->add_comment_to_post($access_token, $author_urn, $result, $post_url);
-                    }
                 } else {
                     update_post_meta($post->ID, '_dlap_error_personal', get_transient('dlap_last_error'));
                 }
@@ -964,19 +870,15 @@ class Devenia_LinkedIn_Autoposter {
         if (($post_target === 'organization' || $post_target === 'both') && $organization_id) {
             $author_urn = 'urn:li:organization:' . $organization_id;
 
-            // In URL-in-comment mode, upload image to LinkedIn first
+            // Upload image to LinkedIn for image-only post (maximum reach)
             $image_urn = null;
-            if ($url_in_comment && $thumbnail_url) {
+            if ($thumbnail_url) {
                 $image_urn = $this->upload_image_to_linkedin($access_token, $author_urn, $thumbnail_url);
             }
 
-            $result = $this->post_to_linkedin($access_token, $author_urn, $content, $article_url, $article_title, $article_excerpt, $article_thumbnail, $image_urn);
+            $result = $this->post_to_linkedin($access_token, $author_urn, $content, null, null, null, null, $image_urn);
             if ($result) {
                 $results['organization'] = $result;
-                // Add URL as comment if enabled
-                if ($url_in_comment && $result) {
-                    $this->add_comment_to_post($access_token, $author_urn, $result, $post_url);
-                }
             } else {
                 update_post_meta($post->ID, '_dlap_error_organization', get_transient('dlap_last_error'));
             }
@@ -986,82 +888,8 @@ class Devenia_LinkedIn_Autoposter {
     }
 
     /**
-     * Add a comment to a LinkedIn post
-     *
-     * @param string $access_token OAuth access token
-     * @param string $actor_urn The URN of the actor (person or organization)
-     * @param string $post_urn The LinkedIn post URN (from x-restli-id header, e.g., urn:li:share:123 or urn:li:ugcPost:123)
-     * @param string $comment_text The text to post as a comment
-     * @return string|false The comment ID on success, false on failure
-     */
-    private function add_comment_to_post($access_token, $actor_urn, $post_urn, $comment_text) {
-        // The post URN from x-restli-id is urn:li:share:xxx or urn:li:ugcPost:xxx
-        // For comments API:
-        // - URL path uses the post URN (urn:li:share:xxx or urn:li:ugcPost:xxx)
-        // - object field also accepts the same URN types (share, ugcPost, or activity)
-        // Using the same URN in both places should work according to the API docs
-
-        $body = array(
-            'actor' => $actor_urn,
-            'object' => $post_urn,  // Use the same URN as in URL path - API accepts share/ugcPost URNs
-            'message' => array(
-                'text' => $comment_text,
-            ),
-        );
-
-        // Log for debugging
-        error_log('DLAP Comment Debug - Post URN (for URL and object): ' . $post_urn);
-        error_log('DLAP Comment Debug - Actor URN: ' . $actor_urn);
-        error_log('DLAP Comment Debug - Comment text: ' . $comment_text);
-
-        // Use the post URN directly in the URL path (not activity URN)
-        $response = wp_remote_post('https://api.linkedin.com/rest/socialActions/' . urlencode($post_urn) . '/comments', array(
-            'headers' => array(
-                'Authorization' => 'Bearer ' . $access_token,
-                'X-Restli-Protocol-Version' => '2.0.0',
-                'LinkedIn-Version' => '202501',
-                'Content-Type' => 'application/json',
-            ),
-            'body' => wp_json_encode($body),
-        ));
-
-        if (is_wp_error($response)) {
-            error_log('DLAP Comment Error: ' . $response->get_error_message());
-            set_transient('dlap_comment_debug', array(
-                'error' => $response->get_error_message(),
-                'post_urn' => $post_urn,
-                'actor_urn' => $actor_urn,
-                'time' => current_time('mysql'),
-            ), 3600);
-            return false;
-        }
-
-        $response_code = wp_remote_retrieve_response_code($response);
-        $response_body = wp_remote_retrieve_body($response);
-        error_log('DLAP Comment Response Code: ' . $response_code);
-        error_log('DLAP Comment Response Body: ' . $response_body);
-
-        // Store debug info in transient for troubleshooting
-        set_transient('dlap_comment_debug', array(
-            'response_code' => $response_code,
-            'response_body' => $response_body,
-            'post_urn' => $post_urn,
-            'actor_urn' => $actor_urn,
-            'comment_text' => $comment_text,
-            'request_body' => wp_json_encode($body),
-            'time' => current_time('mysql'),
-        ), 3600);
-
-        if ($response_code === 201) {
-            return wp_remote_retrieve_header($response, 'x-restli-id');
-        }
-
-        return false;
-    }
-
-    /**
      * Upload image to LinkedIn and return image URN
-     * Required for image-only posts (URL in comment mode)
+     * Required for image-only posts (maximum reach mode)
      */
     private function upload_image_to_linkedin($access_token, $owner_urn, $image_url) {
         error_log('DLAP Image Upload - Starting upload for: ' . $image_url);
