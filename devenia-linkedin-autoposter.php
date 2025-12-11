@@ -3,7 +3,7 @@
  * Plugin Name: Devenia LinkedIn Autoposter
  * Plugin URI: https://devenia.com/
  * Description: Automatically share posts to LinkedIn when published. Uses official LinkedIn API - no scraping, no bloat.
- * Version: 1.3.2
+ * Version: 1.3.3
  * Author: Devenia
  * Author URI: https://devenia.com/
  * License: GPL-2.0+
@@ -16,7 +16,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('DLAP_VERSION', '1.3.2');
+define('DLAP_VERSION', '1.3.3');
 define('DLAP_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('DLAP_PLUGIN_URL', plugin_dir_url(__FILE__));
 
@@ -54,6 +54,7 @@ class Devenia_LinkedIn_Autoposter {
         add_action('admin_menu', array($this, 'add_admin_menu'));
         add_action('admin_init', array($this, 'register_settings'));
         add_action('admin_init', array($this, 'handle_oauth_callback'));
+        add_action('admin_enqueue_scripts', array($this, 'enqueue_admin_scripts'));
 
         // Post publishing hook
         add_action('transition_post_status', array($this, 'handle_post_publish'), 10, 3);
@@ -115,6 +116,16 @@ class Devenia_LinkedIn_Autoposter {
         $message .= "— {$site_name}";
 
         wp_mail($admin_email, $subject, $message);
+    }
+
+    /**
+     * Enqueue admin scripts for media uploader
+     */
+    public function enqueue_admin_scripts($hook) {
+        if ($hook !== 'settings_page_dlap-settings') {
+            return;
+        }
+        wp_enqueue_media();
     }
 
     /**
@@ -239,6 +250,7 @@ class Devenia_LinkedIn_Autoposter {
 {url}');
         $sanitized['url_in_comment'] = isset($input['url_in_comment']) ? (bool) $input['url_in_comment'] : false;
         $sanitized['default_image'] = esc_url_raw($input['default_image'] ?? '');
+        $sanitized['default_image_id'] = absint($input['default_image_id'] ?? 0);
         return $sanitized;
     }
 
@@ -419,10 +431,73 @@ class Devenia_LinkedIn_Autoposter {
 
     public function render_default_image_field() {
         $options = get_option('dlap_settings', array());
-        $value = isset($options['default_image']) ? $options['default_image'] : '';
-        echo '<input type="url" name="dlap_settings[default_image]" value="' . esc_attr($value) . '" class="large-text" placeholder="https://example.com/default-image.jpg">';
-        echo '<p class="description">Fallback image URL if post has no featured image and no images in content. Used for LinkedIn article thumbnail.</p>';
-        echo '<p class="description">Image priority: Featured Image → First image in post → Site Logo → This default image</p>';
+        $image_id = isset($options['default_image_id']) ? $options['default_image_id'] : '';
+        $image_url = isset($options['default_image']) ? $options['default_image'] : '';
+
+        // Get image URL from ID if we have one
+        if ($image_id && !$image_url) {
+            $image_url = wp_get_attachment_image_url($image_id, 'medium');
+        }
+        ?>
+        <div class="dlap-image-upload">
+            <input type="hidden" name="dlap_settings[default_image_id]" id="dlap_default_image_id" value="<?php echo esc_attr($image_id); ?>">
+            <input type="hidden" name="dlap_settings[default_image]" id="dlap_default_image_url" value="<?php echo esc_attr($image_url); ?>">
+
+            <div id="dlap_image_preview" style="margin-bottom: 10px;">
+                <?php if ($image_url): ?>
+                    <img src="<?php echo esc_url($image_url); ?>" style="max-width: 300px; max-height: 200px; border: 1px solid #ddd; padding: 5px;">
+                <?php endif; ?>
+            </div>
+
+            <button type="button" class="button" id="dlap_select_image">Select Image</button>
+            <?php if ($image_url): ?>
+                <button type="button" class="button" id="dlap_remove_image" style="margin-left: 5px;">Remove</button>
+            <?php else: ?>
+                <button type="button" class="button" id="dlap_remove_image" style="margin-left: 5px; display: none;">Remove</button>
+            <?php endif; ?>
+        </div>
+        <p class="description">Fallback image if post has no featured image and no images in content.</p>
+        <p class="description">Image priority: Featured Image → First image in post → Site Logo → This default image</p>
+
+        <script>
+        jQuery(document).ready(function($) {
+            var mediaUploader;
+
+            $('#dlap_select_image').on('click', function(e) {
+                e.preventDefault();
+
+                if (mediaUploader) {
+                    mediaUploader.open();
+                    return;
+                }
+
+                mediaUploader = wp.media({
+                    title: 'Select Default LinkedIn Image',
+                    button: { text: 'Use This Image' },
+                    multiple: false
+                });
+
+                mediaUploader.on('select', function() {
+                    var attachment = mediaUploader.state().get('selection').first().toJSON();
+                    $('#dlap_default_image_id').val(attachment.id);
+                    $('#dlap_default_image_url').val(attachment.url);
+                    $('#dlap_image_preview').html('<img src="' + attachment.url + '" style="max-width: 300px; max-height: 200px; border: 1px solid #ddd; padding: 5px;">');
+                    $('#dlap_remove_image').show();
+                });
+
+                mediaUploader.open();
+            });
+
+            $('#dlap_remove_image').on('click', function(e) {
+                e.preventDefault();
+                $('#dlap_default_image_id').val('');
+                $('#dlap_default_image_url').val('');
+                $('#dlap_image_preview').html('');
+                $(this).hide();
+            });
+        });
+        </script>
+        <?php
     }
 
     /**
@@ -798,9 +873,13 @@ class Devenia_LinkedIn_Autoposter {
 
         // Final fallback: use default image from settings
         if (empty($thumbnail_url)) {
-            $default_image = isset($options['default_image']) ? $options['default_image'] : '';
-            if (!empty($default_image)) {
-                $thumbnail_url = $default_image;
+            $default_image_id = isset($options['default_image_id']) ? $options['default_image_id'] : 0;
+            $default_image_url = isset($options['default_image']) ? $options['default_image'] : '';
+
+            if ($default_image_id) {
+                $thumbnail_url = wp_get_attachment_image_url($default_image_id, 'large');
+            } elseif (!empty($default_image_url)) {
+                $thumbnail_url = $default_image_url;
             }
         }
 

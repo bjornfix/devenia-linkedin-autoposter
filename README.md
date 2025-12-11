@@ -62,6 +62,10 @@ No. Only shares when posts transition from draft/pending to published.
 
 ## Changelog
 
+### 1.3.3
+- Improved: Default image now uses WordPress media library picker instead of URL input
+- Better UX for selecting fallback images
+
 ### 1.3.2
 - Fixed: URL in first comment now works correctly (fixed API endpoint URN format)
 - Added: Debug logging for comment posting to help troubleshoot issues
