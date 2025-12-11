@@ -82,5 +82,5 @@ GPL-2.0+
 
 ## Links
 
-- [Plugin Page](https://devenia.com/plugins/devenia-linkedin-autoposter/)
-- [LinkedIn Setup Guide](https://devenia.com/linkedin-api-setup-guide/)
+- [Plugin Page](https://devenia.com/plugins/linkedin-autoposter/)
+- [LinkedIn Setup Guide](https://devenia.com/learn/linkedin-api-setup/)
