@@ -62,6 +62,11 @@ No. Only shares when posts transition from draft/pending to published.
 
 ## Changelog
 
+### 1.3.5
+- Fixed: Images now appear in "URL in first comment" mode
+- Now properly uploads featured image to LinkedIn via Images API
+- Added: Extensive debug logging for image uploads
+
 ### 1.3.4
 - Changed: Image priority order - Default Image now comes before Site Logo
 - New order: Featured Image → First post image → Default Image → Site Logo

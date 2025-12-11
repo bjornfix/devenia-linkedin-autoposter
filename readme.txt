@@ -6,7 +6,7 @@ Tags: linkedin, social, autoposter, share, automation
 Requires at least: 5.4
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.3.4
+Stable tag: 1.3.5
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
 
@@ -80,6 +80,12 @@ No. The plugin only shares posts when they transition from draft/pending to publ
 Yes! Go to Settings > LinkedIn Autoposter and customize the post template. Available tags: {title}, {excerpt}, {url}, {author}
 
 == Changelog ==
+
+= 1.3.5 =
+* Fixed: Images now appear in "URL in first comment" mode
+* Previously, image posts required uploading to LinkedIn's Images API
+* Now properly uploads featured image/fallback image to LinkedIn before creating post
+* Added: Extensive debug logging for image uploads (DLAP Image Upload in error log)
 
 = 1.3.4 =
 * Changed: Image priority order - Default Image now comes before Site Logo

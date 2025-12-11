@@ -3,7 +3,7 @@
  * Plugin Name: Devenia LinkedIn Autoposter
  * Plugin URI: https://devenia.com/
  * Description: Automatically share posts to LinkedIn when published. Uses official LinkedIn API - no scraping, no bloat.
- * Version: 1.3.4
+ * Version: 1.3.5
  * Author: Devenia
  * Author URI: https://devenia.com/
  * License: GPL-2.0+
@@ -16,7 +16,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('DLAP_VERSION', '1.3.4');
+define('DLAP_VERSION', '1.3.5');
 define('DLAP_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('DLAP_PLUGIN_URL', plugin_dir_url(__FILE__));
 
@@ -884,10 +884,10 @@ class Devenia_LinkedIn_Autoposter {
         }
 
         // If URL in comment mode, don't include article attachment (it shows link preview)
+        // Instead, upload the image directly and create an image post
         $article_url = $url_in_comment ? null : $post_url;
         $article_title = $url_in_comment ? null : $post_title;
         $article_excerpt = $url_in_comment ? null : $excerpt;
-        // Still include thumbnail as image even in comment mode
         $article_thumbnail = $url_in_comment ? null : $thumbnail_url;
 
         $results = array();
@@ -896,7 +896,14 @@ class Devenia_LinkedIn_Autoposter {
         if ($post_target === 'personal' || $post_target === 'both') {
             if ($member_id) {
                 $author_urn = 'urn:li:person:' . $member_id;
-                $result = $this->post_to_linkedin($access_token, $author_urn, $content, $article_url, $article_title, $article_excerpt, $article_thumbnail);
+
+                // In URL-in-comment mode, upload image to LinkedIn first
+                $image_urn = null;
+                if ($url_in_comment && $thumbnail_url) {
+                    $image_urn = $this->upload_image_to_linkedin($access_token, $author_urn, $thumbnail_url);
+                }
+
+                $result = $this->post_to_linkedin($access_token, $author_urn, $content, $article_url, $article_title, $article_excerpt, $article_thumbnail, $image_urn);
                 if ($result) {
                     $results['personal'] = $result;
                     // Add URL as comment if enabled
@@ -912,7 +919,14 @@ class Devenia_LinkedIn_Autoposter {
         // Post to company page if target is organization or both
         if (($post_target === 'organization' || $post_target === 'both') && $organization_id) {
             $author_urn = 'urn:li:organization:' . $organization_id;
-            $result = $this->post_to_linkedin($access_token, $author_urn, $content, $article_url, $article_title, $article_excerpt, $article_thumbnail);
+
+            // In URL-in-comment mode, upload image to LinkedIn first
+            $image_urn = null;
+            if ($url_in_comment && $thumbnail_url) {
+                $image_urn = $this->upload_image_to_linkedin($access_token, $author_urn, $thumbnail_url);
+            }
+
+            $result = $this->post_to_linkedin($access_token, $author_urn, $content, $article_url, $article_title, $article_excerpt, $article_thumbnail, $image_urn);
             if ($result) {
                 $results['organization'] = $result;
                 // Add URL as comment if enabled
@@ -995,9 +1009,108 @@ class Devenia_LinkedIn_Autoposter {
     }
 
     /**
+     * Upload image to LinkedIn and return image URN
+     * Required for image-only posts (URL in comment mode)
+     */
+    private function upload_image_to_linkedin($access_token, $owner_urn, $image_url) {
+        error_log('DLAP Image Upload - Starting upload for: ' . $image_url);
+        error_log('DLAP Image Upload - Owner URN: ' . $owner_urn);
+
+        // Step 1: Initialize upload to get upload URL and image URN
+        $init_response = wp_remote_post('https://api.linkedin.com/rest/images?action=initializeUpload', array(
+            'headers' => array(
+                'Authorization' => 'Bearer ' . $access_token,
+                'X-Restli-Protocol-Version' => '2.0.0',
+                'LinkedIn-Version' => '202411',
+                'Content-Type' => 'application/json',
+            ),
+            'body' => wp_json_encode(array(
+                'initializeUploadRequest' => array(
+                    'owner' => $owner_urn,
+                ),
+            )),
+        ));
+
+        if (is_wp_error($init_response)) {
+            error_log('DLAP Image Upload - Init error: ' . $init_response->get_error_message());
+            return false;
+        }
+
+        $init_code = wp_remote_retrieve_response_code($init_response);
+        $init_body = wp_remote_retrieve_body($init_response);
+        error_log('DLAP Image Upload - Init response code: ' . $init_code);
+        error_log('DLAP Image Upload - Init response body: ' . $init_body);
+
+        if ($init_code !== 200) {
+            error_log('DLAP Image Upload - Init failed with code: ' . $init_code);
+            return false;
+        }
+
+        $init_data = json_decode($init_body, true);
+        if (!isset($init_data['value']['uploadUrl']) || !isset($init_data['value']['image'])) {
+            error_log('DLAP Image Upload - Missing uploadUrl or image in response');
+            return false;
+        }
+
+        $upload_url = $init_data['value']['uploadUrl'];
+        $image_urn = $init_data['value']['image'];
+        error_log('DLAP Image Upload - Got upload URL: ' . $upload_url);
+        error_log('DLAP Image Upload - Got image URN: ' . $image_urn);
+
+        // Step 2: Download image from WordPress
+        $image_response = wp_remote_get($image_url, array(
+            'timeout' => 30,
+        ));
+
+        if (is_wp_error($image_response)) {
+            error_log('DLAP Image Upload - Failed to download image: ' . $image_response->get_error_message());
+            return false;
+        }
+
+        $image_data = wp_remote_retrieve_body($image_response);
+        $content_type = wp_remote_retrieve_header($image_response, 'content-type');
+        if (empty($content_type)) {
+            // Guess from URL extension
+            $ext = strtolower(pathinfo(parse_url($image_url, PHP_URL_PATH), PATHINFO_EXTENSION));
+            $mime_types = array('jpg' => 'image/jpeg', 'jpeg' => 'image/jpeg', 'png' => 'image/png', 'gif' => 'image/gif', 'webp' => 'image/webp');
+            $content_type = isset($mime_types[$ext]) ? $mime_types[$ext] : 'image/jpeg';
+        }
+        error_log('DLAP Image Upload - Downloaded image, size: ' . strlen($image_data) . ', type: ' . $content_type);
+
+        // Step 3: Upload image to LinkedIn
+        $upload_response = wp_remote_request($upload_url, array(
+            'method' => 'PUT',
+            'headers' => array(
+                'Authorization' => 'Bearer ' . $access_token,
+                'Content-Type' => $content_type,
+            ),
+            'body' => $image_data,
+            'timeout' => 60,
+        ));
+
+        if (is_wp_error($upload_response)) {
+            error_log('DLAP Image Upload - Upload error: ' . $upload_response->get_error_message());
+            return false;
+        }
+
+        $upload_code = wp_remote_retrieve_response_code($upload_response);
+        error_log('DLAP Image Upload - Upload response code: ' . $upload_code);
+
+        // LinkedIn returns 201 on successful upload
+        if ($upload_code === 201 || $upload_code === 200) {
+            error_log('DLAP Image Upload - Success! Image URN: ' . $image_urn);
+            return $image_urn;
+        }
+
+        error_log('DLAP Image Upload - Upload failed with code: ' . $upload_code);
+        error_log('DLAP Image Upload - Upload response body: ' . wp_remote_retrieve_body($upload_response));
+        return false;
+    }
+
+    /**
      * Post content to LinkedIn with specified author URN
      */
-    private function post_to_linkedin($access_token, $author_urn, $content, $article_url = null, $article_title = null, $article_description = null, $article_thumbnail = null) {
+    private function post_to_linkedin($access_token, $author_urn, $content, $article_url = null, $article_title = null, $article_description = null, $article_thumbnail = null, $image_urn = null) {
         $body = array(
             'author' => $author_urn,
             'commentary' => $content,
@@ -1011,8 +1124,16 @@ class Devenia_LinkedIn_Autoposter {
             'isReshareDisabledByAuthor' => false,
         );
 
-        // Add article attachment for link preview if URL provided
-        if ($article_url) {
+        // Add content: either image (for URL-in-comment mode) or article (for link preview)
+        if ($image_urn) {
+            // Image-only post (no link preview) - used when URL goes in first comment
+            $body['content'] = array(
+                'media' => array(
+                    'id' => $image_urn,
+                ),
+            );
+        } elseif ($article_url) {
+            // Article attachment with link preview
             $article = array(
                 'source' => $article_url,
                 'title' => $article_title ?: $article_url,
