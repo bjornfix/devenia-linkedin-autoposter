@@ -6,7 +6,7 @@ Tags: linkedin, social, autoposter, share, automation
 Requires at least: 5.4
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.2.1
+Stable tag: 1.2.2
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
 
@@ -81,10 +81,12 @@ Yes! Go to Settings > LinkedIn Autoposter and customize the post template. Avail
 
 == Changelog ==
 
-= 1.2.1 =
+= 1.2.2 =
 * Fixed: Ensure excerpt/text always appears in LinkedIn post commentary
 * Improved: Better excerpt extraction from post content (strips shortcodes/HTML)
 * Added: Fallback to title if no excerpt available
+* Added: If no featured image, uses first image from post content
+* Added: If no images at all, uses site logo as fallback
 
 = 1.2.0 =
 * Fixed: Posts now include clickable link preview with title, description, and thumbnail
