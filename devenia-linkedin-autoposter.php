@@ -3,7 +3,7 @@
  * Plugin Name: Devenia LinkedIn Autoposter
  * Plugin URI: https://devenia.com/
  * Description: Automatically share posts to LinkedIn when published. Uses official LinkedIn API - no scraping, no bloat.
- * Version: 1.3.1
+ * Version: 1.3.2
  * Author: Devenia
  * Author URI: https://devenia.com/
  * License: GPL-2.0+
@@ -16,7 +16,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('DLAP_VERSION', '1.3.1');
+define('DLAP_VERSION', '1.3.2');
 define('DLAP_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('DLAP_PLUGIN_URL', plugin_dir_url(__FILE__));
 
@@ -853,12 +853,24 @@ class Devenia_LinkedIn_Autoposter {
      *
      * @param string $access_token OAuth access token
      * @param string $actor_urn The URN of the actor (person or organization)
-     * @param string $post_id The LinkedIn post ID (from x-restli-id header)
+     * @param string $post_urn The LinkedIn post URN (from x-restli-id header, e.g., urn:li:share:123 or urn:li:ugcPost:123)
      * @param string $comment_text The text to post as a comment
      * @return string|false The comment ID on success, false on failure
      */
-    private function add_comment_to_post($access_token, $actor_urn, $post_id, $comment_text) {
-        // Build the activity URN from the post ID
+    private function add_comment_to_post($access_token, $actor_urn, $post_urn, $comment_text) {
+        // The post URN from x-restli-id is urn:li:share:xxx or urn:li:ugcPost:xxx
+        // For comments API:
+        // - URL path uses the post URN directly (urn:li:share:xxx)
+        // - object field uses urn:li:activity:xxx with the same ID
+
+        // Extract the numeric ID from the URN for the activity URN
+        $post_id = $post_urn;
+        if (strpos($post_urn, 'urn:li:') === 0) {
+            $parts = explode(':', $post_urn);
+            $post_id = end($parts);
+        }
+
+        // Build activity URN for the object field
         $activity_urn = 'urn:li:activity:' . $post_id;
 
         $body = array(
@@ -869,7 +881,14 @@ class Devenia_LinkedIn_Autoposter {
             ),
         );
 
-        $response = wp_remote_post('https://api.linkedin.com/rest/socialActions/' . urlencode($activity_urn) . '/comments', array(
+        // Log for debugging
+        error_log('DLAP Comment Debug - Post URN (for URL): ' . $post_urn);
+        error_log('DLAP Comment Debug - Activity URN (for object): ' . $activity_urn);
+        error_log('DLAP Comment Debug - Actor URN: ' . $actor_urn);
+        error_log('DLAP Comment Debug - Comment text: ' . $comment_text);
+
+        // Use the post URN directly in the URL path (not activity URN)
+        $response = wp_remote_post('https://api.linkedin.com/rest/socialActions/' . urlencode($post_urn) . '/comments', array(
             'headers' => array(
                 'Authorization' => 'Bearer ' . $access_token,
                 'X-Restli-Protocol-Version' => '2.0.0',
@@ -880,10 +899,14 @@ class Devenia_LinkedIn_Autoposter {
         ));
 
         if (is_wp_error($response)) {
+            error_log('DLAP Comment Error: ' . $response->get_error_message());
             return false;
         }
 
         $response_code = wp_remote_retrieve_response_code($response);
+        $response_body = wp_remote_retrieve_body($response);
+        error_log('DLAP Comment Response Code: ' . $response_code);
+        error_log('DLAP Comment Response Body: ' . $response_body);
 
         if ($response_code === 201) {
             return wp_remote_retrieve_header($response, 'x-restli-id');

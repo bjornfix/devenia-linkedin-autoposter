@@ -62,6 +62,10 @@ No. Only shares when posts transition from draft/pending to published.
 
 ## Changelog
 
+### 1.3.2
+- Fixed: URL in first comment now works correctly (fixed API endpoint URN format)
+- Added: Debug logging for comment posting to help troubleshoot issues
+
 ### 1.3.1
 - New: Default fallback image setting - specify a URL to use when post has no images
 - Image priority: Featured Image → First post image → Site Logo → Default Image setting
