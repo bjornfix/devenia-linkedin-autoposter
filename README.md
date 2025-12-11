@@ -62,7 +62,8 @@ No. Only shares when posts transition from draft/pending to published.
 
 ## Changelog
 
-### 1.5.3
+### 1.5.4
+- **Fixed**: Decode HTML entities - emojis now display properly (&#x1f33b; → 🌻)
 - **Fixed**: Preserve paragraph breaks in LinkedIn posts (no more wall of text!)
 
 ### 1.5.2

@@ -6,7 +6,7 @@ Tags: linkedin, social, autoposter, share, automation
 Requires at least: 5.4
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.5.3
+Stable tag: 1.5.4
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
 
@@ -85,7 +85,8 @@ LinkedIn's algorithm deprioritizes posts with external links. For maximum reach,
 
 == Changelog ==
 
-= 1.5.3 =
+= 1.5.4 =
+* Fixed: Decode HTML entities - emojis now display properly (&#x1f33b; → 🌻)
 * Fixed: Preserve paragraph breaks in LinkedIn posts (no more wall of text!)
 
 = 1.5.2 =
