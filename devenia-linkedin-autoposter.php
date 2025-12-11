@@ -3,7 +3,7 @@
  * Plugin Name: Devenia LinkedIn Autoposter
  * Plugin URI: https://devenia.com/
  * Description: Automatically share posts to LinkedIn when published. Uses official LinkedIn API - no scraping, no bloat.
- * Version: 1.4.2
+ * Version: 1.5.0
  * Author: Devenia
  * Author URI: https://devenia.com/
  * License: GPL-2.0+
@@ -16,7 +16,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('DLAP_VERSION', '1.4.2');
+define('DLAP_VERSION', '1.5.0');
 define('DLAP_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('DLAP_PLUGIN_URL', plugin_dir_url(__FILE__));
 
@@ -223,6 +223,22 @@ class Devenia_LinkedIn_Autoposter {
             'dlap-settings',
             'dlap_post_section'
         );
+
+        add_settings_field(
+            'image_gallery',
+            'Image Gallery (Rotation)',
+            array($this, 'render_image_gallery_field'),
+            'dlap-settings',
+            'dlap_post_section'
+        );
+
+        add_settings_field(
+            'image_source',
+            'Image Source Priority',
+            array($this, 'render_image_source_field'),
+            'dlap-settings',
+            'dlap_post_section'
+        );
     }
 
     /**
@@ -240,6 +256,17 @@ class Devenia_LinkedIn_Autoposter {
 {excerpt}');
         $sanitized['default_image'] = esc_url_raw($input['default_image'] ?? '');
         $sanitized['default_image_id'] = absint($input['default_image_id'] ?? 0);
+
+        // Image gallery - array of image IDs
+        $sanitized['image_gallery'] = array();
+        if (!empty($input['image_gallery'])) {
+            $gallery_ids = is_array($input['image_gallery']) ? $input['image_gallery'] : explode(',', $input['image_gallery']);
+            $sanitized['image_gallery'] = array_filter(array_map('absint', $gallery_ids));
+        }
+
+        // Image source priority
+        $sanitized['image_source'] = sanitize_text_field($input['image_source'] ?? 'featured_first');
+
         return $sanitized;
     }
 
@@ -472,6 +499,131 @@ class Devenia_LinkedIn_Autoposter {
             });
         });
         </script>
+        <?php
+    }
+
+    /**
+     * Render image gallery field (multi-select for rotation)
+     */
+    public function render_image_gallery_field() {
+        $options = get_option('dlap_settings', array());
+        $gallery_ids = isset($options['image_gallery']) ? $options['image_gallery'] : array();
+        $gallery_ids_string = implode(',', $gallery_ids);
+        ?>
+        <div class="dlap-gallery-upload">
+            <input type="hidden" name="dlap_settings[image_gallery]" id="dlap_gallery_ids" value="<?php echo esc_attr($gallery_ids_string); ?>">
+
+            <div id="dlap_gallery_preview" style="display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 10px;">
+                <?php foreach ($gallery_ids as $image_id):
+                    $image_url = wp_get_attachment_image_url($image_id, 'thumbnail');
+                    if ($image_url):
+                ?>
+                    <div class="dlap-gallery-item" data-id="<?php echo esc_attr($image_id); ?>" style="position: relative;">
+                        <img src="<?php echo esc_url($image_url); ?>" style="width: 100px; height: 100px; object-fit: cover; border: 1px solid #ddd;">
+                        <span class="dlap-gallery-remove" style="position: absolute; top: -5px; right: -5px; background: #d63638; color: white; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 14px;">&times;</span>
+                    </div>
+                <?php endif; endforeach; ?>
+            </div>
+
+            <button type="button" class="button" id="dlap_add_gallery_images">Add Images</button>
+            <button type="button" class="button" id="dlap_clear_gallery" style="margin-left: 5px;">Clear All</button>
+
+            <?php
+            $rotation_index = get_option('dlap_gallery_rotation_index', 0);
+            $total_images = count($gallery_ids);
+            if ($total_images > 0):
+            ?>
+                <p class="description" style="margin-top: 10px;">
+                    <strong>Rotation:</strong> Next post will use image <?php echo ($rotation_index % $total_images) + 1; ?> of <?php echo $total_images; ?>
+                </p>
+            <?php endif; ?>
+        </div>
+        <p class="description">Add multiple images that will rotate sequentially with each LinkedIn post. Keeps your feed visually fresh.</p>
+
+        <script>
+        jQuery(document).ready(function($) {
+            var galleryFrame;
+
+            // Add images to gallery
+            $('#dlap_add_gallery_images').on('click', function(e) {
+                e.preventDefault();
+
+                if (galleryFrame) {
+                    galleryFrame.open();
+                    return;
+                }
+
+                galleryFrame = wp.media({
+                    title: 'Select LinkedIn Gallery Images',
+                    button: { text: 'Add to Gallery' },
+                    multiple: true
+                });
+
+                galleryFrame.on('select', function() {
+                    var selection = galleryFrame.state().get('selection');
+                    var currentIds = $('#dlap_gallery_ids').val() ? $('#dlap_gallery_ids').val().split(',').filter(Boolean) : [];
+
+                    selection.each(function(attachment) {
+                        attachment = attachment.toJSON();
+                        if (currentIds.indexOf(attachment.id.toString()) === -1) {
+                            currentIds.push(attachment.id);
+                            var thumb = attachment.sizes && attachment.sizes.thumbnail ? attachment.sizes.thumbnail.url : attachment.url;
+                            $('#dlap_gallery_preview').append(
+                                '<div class="dlap-gallery-item" data-id="' + attachment.id + '" style="position: relative;">' +
+                                '<img src="' + thumb + '" style="width: 100px; height: 100px; object-fit: cover; border: 1px solid #ddd;">' +
+                                '<span class="dlap-gallery-remove" style="position: absolute; top: -5px; right: -5px; background: #d63638; color: white; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 14px;">&times;</span>' +
+                                '</div>'
+                            );
+                        }
+                    });
+
+                    $('#dlap_gallery_ids').val(currentIds.join(','));
+                });
+
+                galleryFrame.open();
+            });
+
+            // Remove single image from gallery
+            $(document).on('click', '.dlap-gallery-remove', function() {
+                var $item = $(this).parent();
+                var removeId = $item.data('id').toString();
+                var currentIds = $('#dlap_gallery_ids').val().split(',').filter(Boolean);
+                currentIds = currentIds.filter(function(id) { return id !== removeId; });
+                $('#dlap_gallery_ids').val(currentIds.join(','));
+                $item.remove();
+            });
+
+            // Clear all gallery images
+            $('#dlap_clear_gallery').on('click', function(e) {
+                e.preventDefault();
+                $('#dlap_gallery_ids').val('');
+                $('#dlap_gallery_preview').html('');
+            });
+        });
+        </script>
+        <?php
+    }
+
+    /**
+     * Render image source priority field
+     */
+    public function render_image_source_field() {
+        $options = get_option('dlap_settings', array());
+        $value = isset($options['image_source']) ? $options['image_source'] : 'featured_first';
+        ?>
+        <label style="display: block; margin-bottom: 8px;">
+            <input type="radio" name="dlap_settings[image_source]" value="featured_first" <?php checked($value, 'featured_first'); ?>>
+            <strong>Featured image first</strong> — Use post's featured image, fall back to gallery if none
+        </label>
+        <label style="display: block; margin-bottom: 8px;">
+            <input type="radio" name="dlap_settings[image_source]" value="gallery_first" <?php checked($value, 'gallery_first'); ?>>
+            <strong>Gallery first</strong> — Always use rotating gallery images (ignores featured images)
+        </label>
+        <label style="display: block; margin-bottom: 8px;">
+            <input type="radio" name="dlap_settings[image_source]" value="gallery_only" <?php checked($value, 'gallery_only'); ?>>
+            <strong>Gallery only</strong> — Only use gallery images (no post if gallery is empty)
+        </label>
+        <p class="description">Choose how images are selected for LinkedIn posts.</p>
         <?php
     }
 
@@ -758,6 +910,111 @@ class Devenia_LinkedIn_Autoposter {
     }
 
     /**
+     * Get image URL for LinkedIn post based on settings
+     * Handles gallery rotation, featured images, and fallbacks
+     */
+    private function get_linkedin_image($post, $options) {
+        $image_source = isset($options['image_source']) ? $options['image_source'] : 'featured_first';
+        $gallery_ids = isset($options['image_gallery']) ? $options['image_gallery'] : array();
+
+        $thumbnail_url = null;
+
+        // Get gallery image (with rotation)
+        $gallery_image_url = $this->get_next_gallery_image($gallery_ids);
+
+        // Get featured image
+        $featured_image_url = null;
+        if (has_post_thumbnail($post->ID)) {
+            $featured_image_url = get_the_post_thumbnail_url($post->ID, 'large');
+        }
+
+        // Get first image from post content
+        $content_image_url = null;
+        if (empty($featured_image_url)) {
+            preg_match('/<img[^>]+src=["\']([^"\']+)["\']/', $post->post_content, $matches);
+            if (!empty($matches[1])) {
+                $content_image_url = $matches[1];
+            }
+        }
+
+        // Apply image source priority
+        switch ($image_source) {
+            case 'gallery_only':
+                // Only use gallery, return null if empty (will skip post)
+                $thumbnail_url = $gallery_image_url;
+                break;
+
+            case 'gallery_first':
+                // Gallery takes priority, then featured, then content, then fallbacks
+                if ($gallery_image_url) {
+                    $thumbnail_url = $gallery_image_url;
+                } elseif ($featured_image_url) {
+                    $thumbnail_url = $featured_image_url;
+                } elseif ($content_image_url) {
+                    $thumbnail_url = $content_image_url;
+                }
+                break;
+
+            case 'featured_first':
+            default:
+                // Featured takes priority, then content, then gallery, then fallbacks
+                if ($featured_image_url) {
+                    $thumbnail_url = $featured_image_url;
+                } elseif ($content_image_url) {
+                    $thumbnail_url = $content_image_url;
+                } elseif ($gallery_image_url) {
+                    $thumbnail_url = $gallery_image_url;
+                }
+                break;
+        }
+
+        // Fallback to default image if still no image
+        if (empty($thumbnail_url)) {
+            $default_image_id = isset($options['default_image_id']) ? $options['default_image_id'] : 0;
+            $default_image_url = isset($options['default_image']) ? $options['default_image'] : '';
+
+            if ($default_image_id) {
+                $thumbnail_url = wp_get_attachment_image_url($default_image_id, 'large');
+            } elseif (!empty($default_image_url)) {
+                $thumbnail_url = $default_image_url;
+            }
+        }
+
+        // Final fallback: site logo
+        if (empty($thumbnail_url)) {
+            $custom_logo_id = get_theme_mod('custom_logo');
+            if ($custom_logo_id) {
+                $thumbnail_url = wp_get_attachment_image_url($custom_logo_id, 'full');
+            }
+        }
+
+        return $thumbnail_url;
+    }
+
+    /**
+     * Get next image from gallery rotation
+     * Returns URL and increments rotation counter
+     */
+    private function get_next_gallery_image($gallery_ids) {
+        if (empty($gallery_ids)) {
+            return null;
+        }
+
+        $rotation_index = get_option('dlap_gallery_rotation_index', 0);
+        $total_images = count($gallery_ids);
+
+        // Get current image
+        $current_index = $rotation_index % $total_images;
+        $image_id = $gallery_ids[$current_index];
+        $image_url = wp_get_attachment_image_url($image_id, 'large');
+
+        // Increment rotation for next post
+        update_option('dlap_gallery_rotation_index', $rotation_index + 1);
+
+        return $image_url;
+    }
+
+    /**
      * Share post to LinkedIn
      */
     public function share_post($post) {
@@ -811,39 +1068,8 @@ class Devenia_LinkedIn_Autoposter {
             $content = $post_title . "\n\n" . $excerpt;
         }
 
-        // Get image for the post (image-only mode for maximum reach)
-        $thumbnail_url = null;
-        if (has_post_thumbnail($post->ID)) {
-            $thumbnail_url = get_the_post_thumbnail_url($post->ID, 'large');
-        }
-
-        // If no featured image, try to get first image from post content
-        if (empty($thumbnail_url)) {
-            preg_match('/<img[^>]+src=["\']([^"\']+)["\']/', $post->post_content, $matches);
-            if (!empty($matches[1])) {
-                $thumbnail_url = $matches[1];
-            }
-        }
-
-        // Try default image from settings
-        if (empty($thumbnail_url)) {
-            $default_image_id = isset($options['default_image_id']) ? $options['default_image_id'] : 0;
-            $default_image_url = isset($options['default_image']) ? $options['default_image'] : '';
-
-            if ($default_image_id) {
-                $thumbnail_url = wp_get_attachment_image_url($default_image_id, 'large');
-            } elseif (!empty($default_image_url)) {
-                $thumbnail_url = $default_image_url;
-            }
-        }
-
-        // Final fallback: use site logo
-        if (empty($thumbnail_url)) {
-            $custom_logo_id = get_theme_mod('custom_logo');
-            if ($custom_logo_id) {
-                $thumbnail_url = wp_get_attachment_image_url($custom_logo_id, 'full');
-            }
-        }
+        // Get image for the post based on image source priority setting
+        $thumbnail_url = $this->get_linkedin_image($post, $options);
 
         $results = array();
 

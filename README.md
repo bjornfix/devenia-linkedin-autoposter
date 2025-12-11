@@ -62,6 +62,12 @@ No. Only shares when posts transition from draft/pending to published.
 
 ## Changelog
 
+### 1.5.0
+- **New**: Image Gallery with sequential rotation - keeps your LinkedIn feed visually fresh
+- **New**: Image Source Priority setting - choose between "Featured first", "Gallery first", or "Gallery only"
+- Images rotate automatically with each post (no more banner blindness!)
+- Settings show which image is next in rotation
+
 ### 1.4.2
 - **Fixed**: Excerpt word limit increased to 450 words (~2700 chars) to properly use LinkedIn's 3000 char limit
 
