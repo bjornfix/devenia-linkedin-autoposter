@@ -3,7 +3,7 @@
  * Plugin Name: Devenia LinkedIn Autoposter
  * Plugin URI: https://devenia.com/
  * Description: Automatically share posts to LinkedIn when published. Uses official LinkedIn API - no scraping, no bloat.
- * Version: 1.3.3
+ * Version: 1.3.4
  * Author: Devenia
  * Author URI: https://devenia.com/
  * License: GPL-2.0+
@@ -16,7 +16,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('DLAP_VERSION', '1.3.3');
+define('DLAP_VERSION', '1.3.4');
 define('DLAP_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('DLAP_PLUGIN_URL', plugin_dir_url(__FILE__));
 
@@ -457,7 +457,7 @@ class Devenia_LinkedIn_Autoposter {
             <?php endif; ?>
         </div>
         <p class="description">Fallback image if post has no featured image and no images in content.</p>
-        <p class="description">Image priority: Featured Image → First image in post → Site Logo → This default image</p>
+        <p class="description">Image priority: Featured Image → First image in post → Default Image → Site Logo</p>
 
         <script>
         jQuery(document).ready(function($) {
@@ -863,15 +863,7 @@ class Devenia_LinkedIn_Autoposter {
             }
         }
 
-        // If still no image, use site logo
-        if (empty($thumbnail_url)) {
-            $custom_logo_id = get_theme_mod('custom_logo');
-            if ($custom_logo_id) {
-                $thumbnail_url = wp_get_attachment_image_url($custom_logo_id, 'full');
-            }
-        }
-
-        // Final fallback: use default image from settings
+        // Try default image from settings
         if (empty($thumbnail_url)) {
             $default_image_id = isset($options['default_image_id']) ? $options['default_image_id'] : 0;
             $default_image_url = isset($options['default_image']) ? $options['default_image'] : '';
@@ -880,6 +872,14 @@ class Devenia_LinkedIn_Autoposter {
                 $thumbnail_url = wp_get_attachment_image_url($default_image_id, 'large');
             } elseif (!empty($default_image_url)) {
                 $thumbnail_url = $default_image_url;
+            }
+        }
+
+        // Final fallback: use site logo
+        if (empty($thumbnail_url)) {
+            $custom_logo_id = get_theme_mod('custom_logo');
+            if ($custom_logo_id) {
+                $thumbnail_url = wp_get_attachment_image_url($custom_logo_id, 'full');
             }
         }
 

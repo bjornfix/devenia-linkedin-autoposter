@@ -62,6 +62,10 @@ No. Only shares when posts transition from draft/pending to published.
 
 ## Changelog
 
+### 1.3.4
+- Changed: Image priority order - Default Image now comes before Site Logo
+- New order: Featured Image → First post image → Default Image → Site Logo
+
 ### 1.3.3
 - Improved: Default image now uses WordPress media library picker instead of URL input
 - Better UX for selecting fallback images
