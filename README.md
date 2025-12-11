@@ -62,6 +62,11 @@ No. Only shares when posts transition from draft/pending to published.
 
 ## Changelog
 
+### 1.2.1
+- Fixed: Ensure excerpt/text always appears in LinkedIn post commentary
+- Improved: Better excerpt extraction from post content (strips shortcodes/HTML)
+- Added: Fallback to title if no excerpt available
+
 ### 1.2.0
 - Fixed: Posts now include clickable link preview with title, description, and thumbnail
 - Added: Featured image is used as article thumbnail in LinkedIn posts

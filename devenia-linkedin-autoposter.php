@@ -3,7 +3,7 @@
  * Plugin Name: Devenia LinkedIn Autoposter
  * Plugin URI: https://devenia.com/
  * Description: Automatically share posts to LinkedIn when published. Uses official LinkedIn API - no scraping, no bloat.
- * Version: 1.2.0
+ * Version: 1.2.1
  * Author: Devenia
  * Author URI: https://devenia.com/
  * License: GPL-2.0+
@@ -16,7 +16,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('DLAP_VERSION', '1.2.0');
+define('DLAP_VERSION', '1.2.1');
 define('DLAP_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('DLAP_PLUGIN_URL', plugin_dir_url(__FILE__));
 
@@ -689,9 +689,22 @@ class Devenia_LinkedIn_Autoposter {
 
 {url}';
 
-        $excerpt = has_excerpt($post->ID) ? get_the_excerpt($post) : wp_trim_words($post->post_content, 30, '...');
         $post_url = get_permalink($post);
         $post_title = get_the_title($post);
+
+        // Get excerpt - try multiple sources
+        $excerpt = '';
+        if (has_excerpt($post->ID)) {
+            $excerpt = get_the_excerpt($post);
+        }
+        if (empty($excerpt)) {
+            // Strip shortcodes and HTML, then trim
+            $clean_content = wp_strip_all_tags(strip_shortcodes($post->post_content));
+            $excerpt = wp_trim_words($clean_content, 30, '...');
+        }
+        if (empty($excerpt)) {
+            $excerpt = $post_title; // Fallback to title if no content
+        }
 
         $content = str_replace(
             array('{title}', '{excerpt}', '{url}', '{author}'),
@@ -703,6 +716,12 @@ class Devenia_LinkedIn_Autoposter {
             ),
             $template
         );
+
+        // Ensure content is not empty - if template produced empty result, use default
+        $content = trim($content);
+        if (empty($content)) {
+            $content = $post_title . "\n\n" . $excerpt . "\n\n" . $post_url;
+        }
 
         // Get featured image for article thumbnail
         $thumbnail_url = null;
