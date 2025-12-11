@@ -3,7 +3,7 @@
  * Plugin Name: Devenia LinkedIn Autoposter
  * Plugin URI: https://devenia.com/
  * Description: Automatically share posts to LinkedIn when published. Uses official LinkedIn API - no scraping, no bloat.
- * Version: 1.5.0
+ * Version: 1.5.1
  * Author: Devenia
  * Author URI: https://devenia.com/
  * License: GPL-2.0+
@@ -16,7 +16,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('DLAP_VERSION', '1.5.0');
+define('DLAP_VERSION', '1.5.1');
 define('DLAP_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('DLAP_PLUGIN_URL', plugin_dir_url(__FILE__));
 
@@ -539,6 +539,10 @@ class Devenia_LinkedIn_Autoposter {
             <?php endif; ?>
         </div>
         <p class="description">Add multiple images that will rotate sequentially with each LinkedIn post. Keeps your feed visually fresh.</p>
+        <div style="background: #f0f6fc; border-left: 4px solid #2271b1; padding: 10px 15px; margin-top: 10px;">
+            <strong>Recommended image size:</strong> 1200 x 1200 pixels (square)<br>
+            <span style="color: #666;">Square images take up more feed space = more attention. Also works: 1080 x 1350 (portrait). Max 8MB, JPG or PNG.</span>
+        </div>
 
         <script>
         jQuery(document).ready(function($) {

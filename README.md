@@ -62,6 +62,9 @@ No. Only shares when posts transition from draft/pending to published.
 
 ## Changelog
 
+### 1.5.1
+- Added: Image size recommendations in settings (1200x1200 square recommended)
+
 ### 1.5.0
 - **New**: Image Gallery with sequential rotation - keeps your LinkedIn feed visually fresh
 - **New**: Image Source Priority setting - choose between "Featured first", "Gallery first", or "Gallery only"
