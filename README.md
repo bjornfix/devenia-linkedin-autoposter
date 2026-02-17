@@ -62,6 +62,13 @@ No. Only shares when posts transition from draft/pending to published.
 
 ## Changelog
 
+### 1.5.13
+- **Improved**: Moved publish-time sharing to a background queue
+- **Improved**: Added transient failure retries with backoff for LinkedIn API requests
+- **Improved**: Added locking to reduce duplicate posts and gallery rotation races
+- **Improved**: Optimized image upload by reading local media files directly when available
+- **Fixed**: Removed legacy packaged subdirectory from distributed plugin files
+
 ### 1.5.12
 - **Fixed**: Automatic LinkedIn API version fallback when a version is retired
 - **Fixed**: Persist working LinkedIn API version in WordPress options for future calls

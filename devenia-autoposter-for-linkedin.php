@@ -3,7 +3,7 @@
  * Plugin Name: Devenia Autoposter for LinkedIn
  * Plugin URI: https://devenia.com/plugins/autoposter-for-linkedin/
  * Description: Automatically share posts to LinkedIn when published. Uses official LinkedIn API - no scraping, no bloat.
- * Version: 1.5.12
+ * Version: 1.5.13
  * Author: Devenia
  * Author URI: https://devenia.com/
  * License: GPL-2.0+
@@ -16,7 +16,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('DLAP_VERSION', '1.5.12');
+define('DLAP_VERSION', '1.5.13');
 define('DLAP_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('DLAP_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('DLAP_LINKEDIN_API_VERSION_DEFAULT', '202602');

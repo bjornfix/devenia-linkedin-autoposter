@@ -6,7 +6,7 @@ Tags: linkedin, social, autoposter, share, automation
 Requires at least: 5.4
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.5.12
+Stable tag: 1.5.13
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
 
@@ -156,6 +156,13 @@ The plugin looks for: Featured image → First image in content → Gallery imag
 4. Token expiration warning with reconnect button
 
 == Changelog ==
+
+= 1.5.13 =
+* Improved: Post sharing now runs in a background queue to avoid slowing down publish requests
+* Improved: Added retry/backoff handling for transient LinkedIn API failures (429/5xx)
+* Improved: Added locking to reduce duplicate posts and gallery rotation race conditions
+* Improved: Local media files are now read directly when available instead of always fetching over HTTP
+* Fixed: Removed legacy packaged subdirectory from plugin distribution
 
 = 1.5.12 =
 * Fixed: Added automatic LinkedIn API version fallback when a requested version is retired
