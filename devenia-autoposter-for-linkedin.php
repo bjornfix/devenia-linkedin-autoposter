@@ -21,6 +21,9 @@ define('DLAP_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('DLAP_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('DLAP_LINKEDIN_API_VERSION_DEFAULT', '202602');
 define('DLAP_LINKEDIN_API_VERSION_FALLBACKS', '202602,202601,202511,202510,202509,202508,202507,202506,202505,202504,202503');
+define('DLAP_HTTP_MAX_ATTEMPTS', 3);
+define('DLAP_SHARE_MAX_ATTEMPTS', 4);
+define('DLAP_SHARE_LOCK_TTL', 300);
 
 /**
  * Log debug message if WP_DEBUG is enabled.
@@ -35,10 +38,21 @@ function dlap_log( $message ) {
 }
 
 /**
+ * Plugin activation hook - schedule recurring maintenance events.
+ */
+function dlap_activate() {
+    if ( ! wp_next_scheduled( 'dlap_daily_check' ) ) {
+        wp_schedule_event( time(), 'daily', 'dlap_daily_check' );
+    }
+}
+register_activation_hook( __FILE__, 'dlap_activate' );
+
+/**
  * Plugin deactivation hook - clean up scheduled events.
  */
 function dlap_deactivate() {
     wp_clear_scheduled_hook( 'dlap_daily_check' );
+    wp_clear_scheduled_hook( 'dlap_process_post_share' );
 }
 register_deactivation_hook( __FILE__, 'dlap_deactivate' );
 
@@ -82,6 +96,7 @@ class Dlap_LinkedIn_Autoposter {
 
         // Post publishing hook
         add_action('transition_post_status', array($this, 'handle_post_publish'), 10, 3);
+        add_action('dlap_process_post_share', array($this, 'process_scheduled_post_share'), 10, 2);
 
         // Meta box for per-post control
         add_action('add_meta_boxes', array($this, 'add_meta_box'));
@@ -1008,28 +1023,211 @@ class Dlap_LinkedIn_Autoposter {
         $last_response = false;
 
         foreach ($this->get_linkedin_api_versions() as $version) {
-            $request_args['method'] = $method;
-            $request_args['headers'] = $this->get_linkedin_rest_headers($access_token, $version, $extra_headers);
+            for ($attempt = 1; $attempt <= DLAP_HTTP_MAX_ATTEMPTS; $attempt++) {
+                $request_args['method'] = $method;
+                $request_args['headers'] = $this->get_linkedin_rest_headers($access_token, $version, $extra_headers);
 
-            $response = wp_remote_request($url, $request_args);
-            if (is_wp_error($response)) {
+                $response = wp_remote_request($url, $request_args);
+
+                if (is_wp_error($response)) {
+                    if ($attempt < DLAP_HTTP_MAX_ATTEMPTS) {
+                        $delay = $this->get_http_retry_delay_seconds($attempt);
+                        dlap_log('DLAP LinkedIn API - Request error, retrying in ' . $delay . 's: ' . $response->get_error_message());
+                        sleep($delay);
+                        continue;
+                    }
+                    return $response;
+                }
+
+                $response_code = wp_remote_retrieve_response_code($response);
+                $response_body = wp_remote_retrieve_body($response);
+
+                if ($this->is_nonexistent_linkedin_version_error($response_code, $response_body)) {
+                    dlap_log('DLAP LinkedIn API - Version ' . $version . ' is inactive, trying fallback.');
+                    $last_response = $response;
+                    continue 2;
+                }
+
+                if ($this->is_retryable_linkedin_response_code($response_code) && $attempt < DLAP_HTTP_MAX_ATTEMPTS) {
+                    $delay = $this->get_http_retry_delay_seconds($attempt, $response);
+                    dlap_log('DLAP LinkedIn API - Retryable response (' . $response_code . '), retrying in ' . $delay . 's.');
+                    $last_response = $response;
+                    sleep($delay);
+                    continue;
+                }
+
+                $this->set_linkedin_api_version($version);
                 return $response;
             }
-
-            $response_code = wp_remote_retrieve_response_code($response);
-            $response_body = wp_remote_retrieve_body($response);
-
-            if ($this->is_nonexistent_linkedin_version_error($response_code, $response_body)) {
-                dlap_log('DLAP LinkedIn API - Version ' . $version . ' is inactive, trying fallback.');
-                $last_response = $response;
-                continue;
-            }
-
-            $this->set_linkedin_api_version($version);
-            return $response;
         }
 
         return $last_response;
+    }
+
+    /**
+     * Check if response code indicates a transient failure that should be retried.
+     */
+    private function is_retryable_linkedin_response_code($response_code) {
+        return in_array((int) $response_code, array(429, 500, 502, 503, 504), true);
+    }
+
+    /**
+     * Get retry delay for transient HTTP failures.
+     */
+    private function get_http_retry_delay_seconds($attempt, $response = false) {
+        if (false !== $response) {
+            $retry_after = wp_remote_retrieve_header($response, 'retry-after');
+            if (is_array($retry_after)) {
+                $retry_after = reset($retry_after);
+            }
+            if (is_numeric($retry_after)) {
+                return max(1, min(30, (int) $retry_after));
+            }
+            if (is_string($retry_after)) {
+                $retry_time = strtotime($retry_after);
+                if (false !== $retry_time) {
+                    return max(1, min(30, $retry_time - time()));
+                }
+            }
+        }
+
+        $backoff = (int) pow(2, max(0, (int) $attempt - 1));
+        return max(1, min(8, $backoff));
+    }
+
+    /**
+     * Get delay for background share retries.
+     */
+    private function get_share_retry_delay_seconds($attempt) {
+        $backoff = (int) pow(2, max(0, (int) $attempt - 1));
+        return max(60, min(1800, $backoff * 60));
+    }
+
+    /**
+     * Acquire a short-lived lock to avoid duplicate work.
+     */
+    private function acquire_lock($lock_name, $ttl_seconds) {
+        $option_name = 'dlap_lock_' . sanitize_key($lock_name);
+        $expires_at = time() + max(1, (int) $ttl_seconds);
+
+        if (add_option($option_name, $expires_at, '', false)) {
+            return true;
+        }
+
+        $existing_expires_at = (int) get_option($option_name, 0);
+        if ($existing_expires_at > time()) {
+            return false;
+        }
+
+        update_option($option_name, $expires_at, false);
+        return true;
+    }
+
+    /**
+     * Release a lock acquired with acquire_lock().
+     */
+    private function release_lock($lock_name) {
+        $option_name = 'dlap_lock_' . sanitize_key($lock_name);
+        delete_option($option_name);
+    }
+
+    /**
+     * Schedule post sharing in the background queue.
+     */
+    private function schedule_post_share($post_id, $attempt = 1, $delay_seconds = 10) {
+        $post_id = absint($post_id);
+        $attempt = max(1, absint($attempt));
+        if (!$post_id) {
+            return false;
+        }
+
+        $args = array($post_id, $attempt);
+        if (wp_next_scheduled('dlap_process_post_share', $args)) {
+            return true;
+        }
+
+        $timestamp = time() + max(0, (int) $delay_seconds);
+        return (bool) wp_schedule_single_event($timestamp, 'dlap_process_post_share', $args);
+    }
+
+    /**
+     * Process background post sharing.
+     */
+    public function process_scheduled_post_share($post_id, $attempt = 1) {
+        $post_id = absint($post_id);
+        $attempt = max(1, absint($attempt));
+        if (!$post_id) {
+            return;
+        }
+
+        $post = get_post($post_id);
+        if (!$post instanceof WP_Post || 'publish' !== $post->post_status) {
+            return;
+        }
+
+        $options = get_option('dlap_settings', array());
+        $post_types = isset($options['post_types']) ? $options['post_types'] : array('post');
+        if (!in_array($post->post_type, $post_types, true)) {
+            return;
+        }
+
+        if (get_post_meta($post_id, '_dlap_disable', true)) {
+            return;
+        }
+
+        if (get_post_meta($post_id, '_dlap_shared', true)) {
+            return;
+        }
+
+        $lock_name = 'post_share_' . $post_id;
+        if (!$this->acquire_lock($lock_name, DLAP_SHARE_LOCK_TTL)) {
+            return;
+        }
+
+        try {
+            delete_post_meta($post_id, '_dlap_share_queued');
+
+            if (!$this->is_connected()) {
+                update_post_meta($post_id, '_dlap_error', 'LinkedIn connection is missing or token is expired.');
+                if ($attempt < DLAP_SHARE_MAX_ATTEMPTS) {
+                    $next_attempt = $attempt + 1;
+                    $delay = $this->get_share_retry_delay_seconds($attempt);
+                    if ($this->schedule_post_share($post_id, $next_attempt, $delay)) {
+                        update_post_meta($post_id, '_dlap_share_queued', time() + $delay);
+                        update_post_meta($post_id, '_dlap_share_attempt', $attempt);
+                    }
+                }
+                return;
+            }
+
+            $result = $this->share_post($post);
+            if ($result) {
+                update_post_meta($post_id, '_dlap_shared', time());
+                update_post_meta($post_id, '_dlap_post_id', $result);
+                delete_post_meta($post_id, '_dlap_error');
+                delete_post_meta($post_id, '_dlap_error_personal');
+                delete_post_meta($post_id, '_dlap_error_organization');
+                delete_post_meta($post_id, '_dlap_share_attempt');
+                return;
+            }
+
+            $last_error = get_transient('dlap_last_error');
+            if (empty($last_error)) {
+                $last_error = 'LinkedIn sharing failed.';
+            }
+            update_post_meta($post_id, '_dlap_error', $last_error);
+            update_post_meta($post_id, '_dlap_share_attempt', $attempt);
+
+            if ($attempt < DLAP_SHARE_MAX_ATTEMPTS) {
+                $next_attempt = $attempt + 1;
+                $delay = $this->get_share_retry_delay_seconds($attempt);
+                if ($this->schedule_post_share($post_id, $next_attempt, $delay)) {
+                    update_post_meta($post_id, '_dlap_share_queued', time() + $delay);
+                }
+            }
+        } finally {
+            $this->release_lock($lock_name);
+        }
     }
 
     /**
@@ -1041,15 +1239,14 @@ class Dlap_LinkedIn_Autoposter {
             return;
         }
 
-        // Check if connected
-        if (!$this->is_connected()) {
+        if (!$post instanceof WP_Post) {
             return;
         }
 
         // Check post type
         $options = get_option('dlap_settings', array());
         $post_types = isset($options['post_types']) ? $options['post_types'] : array('post');
-        if (!in_array($post->post_type, $post_types)) {
+        if (!in_array($post->post_type, $post_types, true)) {
             return;
         }
 
@@ -1058,13 +1255,14 @@ class Dlap_LinkedIn_Autoposter {
             return;
         }
 
-        // Share to LinkedIn
-        $result = $this->share_post($post);
+        // Already shared - no need to queue again.
+        if (get_post_meta($post->ID, '_dlap_shared', true)) {
+            return;
+        }
 
-        // Log result
-        if ($result) {
-            update_post_meta($post->ID, '_dlap_shared', time());
-            update_post_meta($post->ID, '_dlap_post_id', $result);
+        // Queue background share job to avoid slowing down publish requests.
+        if ($this->schedule_post_share($post->ID, 1, 10)) {
+            update_post_meta($post->ID, '_dlap_share_queued', time() + 10);
         }
     }
 
@@ -1171,8 +1369,14 @@ class Dlap_LinkedIn_Autoposter {
             return null;
         }
 
-        $rotation_index = get_option('dlap_gallery_rotation_index', 0);
         $total_images = count($gallery_ids);
+        $rotation_index = get_option('dlap_gallery_rotation_index', 0);
+
+        // Guard against concurrent publish events stepping on the same rotation index.
+        $lock_acquired = $this->acquire_lock('gallery_rotation', 30);
+        if ($lock_acquired) {
+            $rotation_index = get_option('dlap_gallery_rotation_index', 0);
+        }
 
         // Get current image
         $current_index = $rotation_index % $total_images;
@@ -1180,7 +1384,13 @@ class Dlap_LinkedIn_Autoposter {
         $image_url = wp_get_attachment_image_url($image_id, 'large');
 
         // Increment rotation for next post
-        update_option('dlap_gallery_rotation_index', $rotation_index + 1);
+        if ($lock_acquired) {
+            update_option('dlap_gallery_rotation_index', $rotation_index + 1);
+            $this->release_lock('gallery_rotation');
+        } else {
+            // Fallback: still move forward to keep behavior reasonable even if lock wasn't acquired.
+            update_option('dlap_gallery_rotation_index', $rotation_index + 1);
+        }
 
         return array(
             'url' => $image_url,
@@ -1304,6 +1514,32 @@ class Dlap_LinkedIn_Autoposter {
     }
 
     /**
+     * Resolve a local file path for media URLs hosted on this WordPress site.
+     */
+    private function get_local_media_path_from_url($image_url) {
+        if (!is_string($image_url) || empty($image_url)) {
+            return '';
+        }
+
+        $upload_dir = wp_get_upload_dir();
+        if (empty($upload_dir['baseurl']) || empty($upload_dir['basedir'])) {
+            return '';
+        }
+
+        if (strpos($image_url, $upload_dir['baseurl']) !== 0) {
+            return '';
+        }
+
+        $relative_path = ltrim(substr($image_url, strlen($upload_dir['baseurl'])), '/');
+        if (empty($relative_path)) {
+            return '';
+        }
+
+        $local_path = trailingslashit($upload_dir['basedir']) . $relative_path;
+        return is_readable($local_path) ? $local_path : '';
+    }
+
+    /**
      * Upload image to LinkedIn and return image URN
      * Required for image-only posts (maximum reach mode)
      */
@@ -1354,25 +1590,59 @@ class Dlap_LinkedIn_Autoposter {
         dlap_log('DLAP Image Upload - Got upload URL: ' . $upload_url);
         dlap_log('DLAP Image Upload - Got image URN: ' . $image_urn);
 
-        // Step 2: Download image from WordPress
-        $image_response = wp_remote_get($image_url, array(
-            'timeout' => 30,
-        ));
+        // Step 2: Prefer local file reads for local media; fall back to HTTP fetch.
+        $image_data = '';
+        $content_type = '';
+        $local_image_path = $this->get_local_media_path_from_url($image_url);
 
-        if (is_wp_error($image_response)) {
-            dlap_log('DLAP Image Upload - Failed to download image: ' . $image_response->get_error_message());
-            return false;
+        if ($local_image_path) {
+            // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Efficient local media read for upload.
+            $image_data = file_get_contents($local_image_path);
+            if (false === $image_data) {
+                $image_data = '';
+            }
+
+            $file_type = wp_check_filetype($local_image_path);
+            if (!empty($file_type['type'])) {
+                $content_type = $file_type['type'];
+            }
+
+            dlap_log('DLAP Image Upload - Loaded local file: ' . $local_image_path);
         }
 
-        $image_data = wp_remote_retrieve_body($image_response);
-        $content_type = wp_remote_retrieve_header($image_response, 'content-type');
+        if (empty($image_data)) {
+            $image_response = wp_remote_get($image_url, array(
+                'timeout' => 30,
+            ));
+
+            if (is_wp_error($image_response)) {
+                dlap_log('DLAP Image Upload - Failed to download image: ' . $image_response->get_error_message());
+                return false;
+            }
+
+            $image_response_code = wp_remote_retrieve_response_code($image_response);
+            if ((int) $image_response_code >= 400) {
+                dlap_log('DLAP Image Upload - Image fetch returned HTTP ' . $image_response_code);
+                return false;
+            }
+
+            $image_data = wp_remote_retrieve_body($image_response);
+            $content_type = wp_remote_retrieve_header($image_response, 'content-type');
+        }
+
         if (empty($content_type)) {
             // Guess from URL extension
-            $ext = strtolower( pathinfo( wp_parse_url( $image_url, PHP_URL_PATH ), PATHINFO_EXTENSION ) );
+            $ext = strtolower(pathinfo(wp_parse_url($image_url, PHP_URL_PATH), PATHINFO_EXTENSION));
             $mime_types = array('jpg' => 'image/jpeg', 'jpeg' => 'image/jpeg', 'png' => 'image/png', 'gif' => 'image/gif', 'webp' => 'image/webp');
             $content_type = isset($mime_types[$ext]) ? $mime_types[$ext] : 'image/jpeg';
         }
-        dlap_log('DLAP Image Upload - Downloaded image, size: ' . strlen($image_data) . ', type: ' . $content_type);
+
+        if (empty($image_data)) {
+            dlap_log('DLAP Image Upload - Empty image data, aborting upload.');
+            return false;
+        }
+
+        dlap_log('DLAP Image Upload - Image payload ready, size: ' . strlen($image_data) . ', type: ' . $content_type);
 
         // Step 3: Upload image to LinkedIn
         $upload_response = wp_remote_request($upload_url, array(
