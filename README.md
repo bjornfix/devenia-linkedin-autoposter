@@ -1,4 +1,4 @@
-# Devenia LinkedIn Autoposter
+# Devenia Autoposter for LinkedIn
 
 **Automatically share posts to LinkedIn when published.** Uses official LinkedIn API - no scraping, no bloat.
 
@@ -31,10 +31,10 @@ This plugin uses LinkedIn's **official API**, so it:
 
 ## Installation
 
-1. Download from [Releases](https://github.com/bjornfix/devenia-linkedin-autoposter/releases)
+1. Download from [Releases](https://github.com/bjornfix/devenia-autoposter-for-linkedin/releases)
 2. Upload via WordPress Admin → Plugins → Add New → Upload Plugin
 3. Activate the plugin
-4. Go to Settings → LinkedIn Autoposter
+4. Go to Settings → Autoposter for LinkedIn
 
 ## LinkedIn App Setup
 
@@ -61,6 +61,11 @@ Yes! You need to be an admin of the page and request Advertising API access from
 No. Only shares when posts transition from draft/pending to published.
 
 ## Changelog
+
+### 1.5.12
+- **Fixed**: Automatic LinkedIn API version fallback when a version is retired
+- **Fixed**: Persist working LinkedIn API version in WordPress options for future calls
+- **Fixed**: Organization admin lookup compatibility by removing unsupported projection parameter
 
 ### 1.5.4
 - **Fixed**: Decode HTML entities - emojis now display properly (&#x1f33b; → 🌻)
@@ -115,7 +120,7 @@ No. Only shares when posts transition from draft/pending to published.
 
 ### 1.3.0
 - **New: URL in first comment option** - LinkedIn deprioritizes posts with external links. This option posts the URL as a comment instead, which can increase reach by 20-40%
-- Enable in Settings > LinkedIn Autoposter > "URL Placement"
+- Enable in Settings > Autoposter for LinkedIn > "URL Placement"
 
 ### 1.2.2
 - Fixed: Ensure excerpt/text always appears in LinkedIn post commentary
@@ -149,5 +154,5 @@ GPL-2.0+
 
 ## Links
 
-- [Plugin Page](https://devenia.com/plugins/linkedin-autoposter/)
+- [Plugin Page](https://devenia.com/plugins/autoposter-for-linkedin/)
 - [LinkedIn Setup Guide](https://devenia.com/learn/linkedin-api-setup/)

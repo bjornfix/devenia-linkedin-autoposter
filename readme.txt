@@ -1,4 +1,4 @@
-=== Devenia LinkedIn Autoposter ===
+=== Devenia Autoposter for LinkedIn ===
 
 Contributors: basicus
 Donate link: https://devenia.com/
@@ -6,52 +6,94 @@ Tags: linkedin, social, autoposter, share, automation
 Requires at least: 5.4
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.5.4
+Stable tag: 1.5.12
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
 
-Automatically share posts to LinkedIn when published. Uses official LinkedIn API - no scraping, no bloat.
+Auto-post to LinkedIn with rotating images, algorithm-optimized formatting, and zero bloat.
 
 == Description ==
 
-A clean, simple LinkedIn auto-poster that does one thing well: automatically shares your WordPress posts to LinkedIn when you publish them.
+**Stop boring your LinkedIn followers with the same image over and over.**
 
-**Why another LinkedIn plugin?**
+Most auto-posters grab your featured image and call it a day. After a few posts, your followers scroll right past - banner blindness kicks in.
 
-Most LinkedIn posting plugins are either:
-- Bloated with upsells and "pro" features
-- Broken because they try to scrape/simulate logins
-- Abandoned and no longer working
+This plugin fixes that with **automatic image rotation**. Upload a gallery of images, and each post uses the next one in sequence. Your LinkedIn feed stays visually fresh, and your posts get noticed.
 
-This plugin uses LinkedIn's official API, so it:
-- Actually works reliably
-- Won't get blocked by LinkedIn's security
-- Stays simple and focused
+= Why This Plugin Exists =
 
-**Features:**
+We tried every LinkedIn plugin out there. They all had problems:
 
-- Automatically share posts to LinkedIn when published
-- Post to personal profile, company page, or both
-- Only shares on first publish (not on updates)
-- Per-post control to skip sharing
-- Customizable post template
-- Choose which post types to share
-- Token expiration warnings (on-screen and email)
-- Zero bloat, zero upsells
+* **Bloated** - Packed with upsells, "pro" features, and settings you'll never use
+* **Broken** - Using scraping or fake logins that LinkedIn blocks
+* **Dumb** - Posting with external links (which LinkedIn's algorithm buries)
 
-**Requirements:**
+So we built something better.
 
-- A LinkedIn account
-- A LinkedIn Developer App (free to create)
+= Key Features =
+
+**Image Gallery Rotation**
+Upload multiple images and they rotate automatically with each post. No more banner blindness. Your feed stays fresh, engagement stays high.
+
+**Algorithm-Optimized Posts**
+LinkedIn tends to deprioritize posts with external links. This plugin posts image-only content. Add your link in the first comment instead (a common strategy among LinkedIn creators).
+
+**Full Excerpt Support**
+Most plugins cut your text at 30-150 words. We use LinkedIn's full 3000 character limit (~450 words). Your message actually gets delivered.
+
+**Post Everywhere at Once**
+Personal profile, company page, or both simultaneously. One publish, multiple destinations.
+
+**Actually Works**
+Uses LinkedIn's official API. No scraping, no fake logins, no getting blocked. Just reliable posting, every time.
+
+**Zero Bloat**
+No upsells. No "pro" version. No tracking. No bloat. Just a plugin that does what it says.
+
+= How It Works =
+
+1. Connect to LinkedIn (one-time setup with your own API credentials)
+2. Configure your image gallery and post template
+3. Publish posts as normal - they automatically appear on LinkedIn
+
+That's it. No daily tokens to refresh, no manual sharing, no forgetting to post.
+
+= Perfect For =
+
+* **Bloggers** who want their posts on LinkedIn without manual work
+* **Businesses** posting to company pages automatically
+* **Marketers** who understand LinkedIn's algorithm (image-only > links)
+* **Anyone** tired of bloated social plugins
+
+= What You Need =
+
+* A LinkedIn account
+* A LinkedIn Developer App (free, takes 5 minutes to create)
+* 60 seconds to connect
+
+**External Services:**
+
+This plugin connects to LinkedIn's API to share your posts. When you publish:
+
+* Your post title, excerpt, and image are sent to LinkedIn's servers
+* Data is transmitted via LinkedIn's official REST API (api.linkedin.com)
+* Authentication uses OAuth 2.0 tokens stored in your WordPress database
+
+By using this plugin, you agree to LinkedIn's:
+* [Terms of Service](https://www.linkedin.com/legal/user-agreement)
+* [Privacy Policy](https://www.linkedin.com/legal/privacy-policy)
+* [API Terms of Use](https://www.linkedin.com/legal/l/api-terms-of-use)
+
+No data is sent anywhere else. We don't collect or store any of your data.
 
 == Installation ==
 
-1. Upload the `devenia-linkedin-autoposter` folder to `/wp-content/plugins/`
+1. Upload the `devenia-autoposter-for-linkedin` folder to `/wp-content/plugins/`
 2. Activate the plugin through the 'Plugins' menu
-3. Go to Settings > LinkedIn Autoposter
+3. Go to Settings > Autoposter for LinkedIn
 4. Follow the setup instructions to create a LinkedIn App and connect
 
-**Creating a LinkedIn App:**
+**Creating a LinkedIn App - Personal Profile (5 minutes):**
 
 1. Go to [LinkedIn Developer Portal](https://www.linkedin.com/developers/apps)
 2. Click "Create App"
@@ -61,112 +103,137 @@ This plugin uses LinkedIn's official API, so it:
 6. Add the redirect URL shown in the plugin settings
 7. Enter credentials in the plugin and click "Connect to LinkedIn"
 
+Done! Your posts will now automatically share to your personal LinkedIn profile.
+
+**Adding Company Page Posting (requires extra step):**
+
+To also post to a LinkedIn Company Page:
+
+1. Complete the personal profile setup above first
+2. In the LinkedIn Developer Portal, go to your app's Products tab
+3. Request access to "Advertising API" (it's free)
+4. Wait for LinkedIn approval (usually 1-3 days)
+5. Once approved, reconnect in the plugin settings
+6. Your admin company pages will now appear in the settings
+
+Note: You must be an admin of the company page you want to post to.
+
 == Frequently Asked Questions ==
+
+= Why do I need my own LinkedIn App? =
+
+LinkedIn requires it. But it's free, takes 5 minutes, and means your data stays yours - not routed through someone else's server.
 
 = Why do I need to reconnect every 60 days? =
 
-LinkedIn intentionally limits access tokens to 60 days for security. This isn't something we can change - it's LinkedIn's policy. The plugin will warn you when your token is about to expire.
+LinkedIn's security policy. All apps must re-authenticate every 60 days. The plugin warns you before expiration (on-screen + email) so you never miss a post.
 
-= Can I share to a LinkedIn Company Page? =
+= Can I share to a Company Page? =
 
-Yes! You can post to your personal profile, a company page, or both simultaneously. To post to a company page, you need to be an admin of that page and request Advertising API access from LinkedIn (it's free but takes a few days for approval).
+Yes! Personal profile, company page, or both at once. For company pages, you need to be an admin and request the Advertising API from LinkedIn (free, takes a few days).
 
-= Will this share my old posts? =
+= Why image-only posts? Where's my link? =
 
-No. The plugin only shares posts when they transition from draft/pending to published. Updating an already-published post will NOT share it again.
+LinkedIn's algorithm tends to deprioritize posts with external links. Image-only posts often perform better. Add your link as the first comment instead - a common strategy among LinkedIn creators.
 
-= Can I customize what gets posted? =
+= How does image rotation work? =
 
-Yes! Go to Settings > LinkedIn Autoposter and customize the post template. Available tags: {title}, {excerpt}, {author}
+Upload multiple images to the gallery. Each post uses the next image in sequence. Post 1 gets image 1, post 2 gets image 2, etc. When it reaches the end, it loops back. Your feed never looks repetitive.
 
-= Why doesn't the post include a link? =
+= Will this share old posts? =
 
-LinkedIn's algorithm deprioritizes posts with external links. For maximum reach, we post image-only content. Add your URL manually as the first comment on LinkedIn - this can increase engagement by 20-40%.
+No. Only new posts when they're first published. Updating an existing post won't re-share it.
+
+= What if my post has no image? =
+
+The plugin looks for: Featured image → First image in content → Gallery image → Default image → Site logo. Something always gets posted.
+
+== Screenshots ==
+
+1. Settings page with connection status and image gallery
+2. Image rotation preview showing next image in queue
+3. Per-post control to skip LinkedIn sharing
+4. Token expiration warning with reconnect button
 
 == Changelog ==
 
+= 1.5.12 =
+* Fixed: Added automatic LinkedIn API version fallback when a requested version is retired
+* Fixed: Persists first working LinkedIn API version to avoid repeated failures on future posts
+* Fixed: Updated organization admin lookup call to avoid unsupported projection parameter
+
+= 1.5.11 =
+* Fixed: Removed remaining percentage claim from upgrade notice section
+
+= 1.5.10 =
+* Fixed: JavaScript now properly enqueued using wp_add_inline_script() instead of inline script tags
+* Fixed: Removed marketing claims from readme per WordPress.org guidelines
+
+= 1.5.8 =
+* Changed: Renamed plugin to "Devenia Autoposter for LinkedIn" for trademark compliance
+
+= 1.5.7 =
+* Fixed: WordPress plugin check compliance - all PHPCS warnings resolved
+
+= 1.5.6 =
+* Fixed: WordPress coding standards compliance (wp_safe_redirect, wp_parse_url, input sanitization)
+* Fixed: Proper unslashing and sanitization of all user inputs
+* Changed: Class renamed to Dlap_LinkedIn_Autoposter for proper prefixing
+
+= 1.5.5 =
+* Fixed: Debug logging now respects WP_DEBUG setting
+* Fixed: Date handling uses wp_date() for proper timezone support
+* Added: Proper cleanup on plugin deactivation and uninstall
+
 = 1.5.4 =
-* Fixed: Decode HTML entities - emojis now display properly (&#x1f33b; → 🌻)
-* Fixed: Preserve paragraph breaks in LinkedIn posts (no more wall of text!)
+* Fixed: HTML entities decode properly (emojis work now!)
+* Fixed: Paragraph breaks preserved in LinkedIn posts
 
 = 1.5.2 =
-* New: Gallery images are now set as featured image on the post (same image on LinkedIn and website)
+* New: Gallery images automatically set as featured image on the post
 
 = 1.5.1 =
-* Added: Image size recommendations in settings (1200x1200 square recommended)
+* Added: Image size recommendations (1200x1200 square for best results)
 
 = 1.5.0 =
-* New: Image Gallery with sequential rotation - keeps your LinkedIn feed visually fresh
-* New: Image Source Priority setting - choose between "Featured first", "Gallery first", or "Gallery only"
-* Images rotate automatically with each post (no more banner blindness!)
-* Settings show which image is next in rotation
+* New: Image Gallery with automatic rotation
+* New: Image Source Priority (Featured first / Gallery first / Gallery only)
+* New: Rotation indicator shows which image is next
 
 = 1.4.2 =
-* Fixed: Excerpt word limit increased to 450 words (~2700 chars) to properly use LinkedIn's 3000 char limit
-
-= 1.4.1 =
-* Fixed: Excerpt word limit increased from 30 to 150 words (no more text cutoff)
-* LinkedIn allows 3000 characters - now you get proper content length
+* Fixed: Excerpt now uses full 2700 characters (LinkedIn allows 3000)
 
 = 1.4.0 =
-* Changed: Posts now use image-only format for maximum LinkedIn reach
-* Removed: URL-in-comment feature (requires Community Management API which conflicts with other products)
-* Tip: Add the post URL manually as the first comment on LinkedIn for best engagement
-* Simplified: Cleaner codebase with fewer API calls
+* Changed: Image-only posts for maximum LinkedIn algorithm reach
+* Simplified: Cleaner codebase, fewer API calls
 
 = 1.3.5 =
-* Fixed: Updated LinkedIn API version from 202411 (sunset) to 202501
-* Fixed: Images now appear in "URL in first comment" mode - uploads via LinkedIn Images API
-* Fixed: Comments API now uses correct URN format in object field
-* Added: Extensive debug logging for image uploads and comment posting
-
-= 1.3.4 =
-* Changed: Image priority order - Default Image now comes before Site Logo
-* New order: Featured Image → First post image → Default Image → Site Logo
-
-= 1.3.3 =
-* Improved: Default image now uses WordPress media library picker instead of URL input
-* Better UX for selecting fallback images
-
-= 1.3.2 =
-* Fixed: URL in first comment now works correctly (fixed API endpoint URN format)
-* Added: Debug logging for comment posting to help troubleshoot issues
-
-= 1.3.1 =
-* New: Default fallback image setting - specify a URL to use when post has no images
-* Image priority: Featured Image → First post image → Site Logo → Default Image setting
+* Fixed: Updated to LinkedIn API version 202501
+* Fixed: Image uploads via LinkedIn Images API
 
 = 1.3.0 =
-* New: Option to post URL in first comment instead of main post (better reach!)
-* LinkedIn deprioritizes posts with external links - this option can increase reach by 20-40%
-* Settings > LinkedIn Autoposter > "URL Placement" to enable
-
-= 1.2.2 =
-* Fixed: Ensure excerpt/text always appears in LinkedIn post commentary
-* Improved: Better excerpt extraction from post content (strips shortcodes/HTML)
-* Added: Fallback to title if no excerpt available
-* Added: If no featured image, uses first image from post content
-* Added: If no images at all, uses site logo as fallback
+* New: Default fallback image setting
+* New: Smart image priority chain
 
 = 1.2.0 =
-* Fixed: Posts now include clickable link preview with title, description, and thumbnail
-* Added: Featured image is used as article thumbnail in LinkedIn posts
-* Changed: URLs in posts are now proper article attachments, not just text
+* Added: Featured image support
+* Added: Site logo fallback
 
 = 1.1.0 =
-* Added: Post to company page option
-* Added: Post to both personal profile AND company page simultaneously
-* Added: Email notifications when token is about to expire
-* Changed: Token expiry warning now triggers at 3 days (was 14)
-* Tested with WordPress 6.9
+* New: Post to company pages
+* New: Post to personal + company simultaneously
+* New: Email notifications before token expires
 
 = 1.0.0 =
 * Initial release
 
 == Upgrade Notice ==
 
-= 1.1.0 =
-New features: Post to company pages and get email reminders before your token expires.
+= 1.5.5 =
+Recommended update: Better cleanup on deactivation, timezone fixes, cleaner logs.
 
-= 1.0.0 =
-Initial release
+= 1.5.0 =
+Major feature: Image gallery rotation keeps your LinkedIn feed fresh!
+
+= 1.4.0 =
+Algorithm optimization: Image-only posts for better visibility.

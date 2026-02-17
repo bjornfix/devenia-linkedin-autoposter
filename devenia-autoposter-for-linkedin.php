@@ -1,14 +1,14 @@
 <?php
 /**
- * Plugin Name: Devenia LinkedIn Autoposter
- * Plugin URI: https://devenia.com/
+ * Plugin Name: Devenia Autoposter for LinkedIn
+ * Plugin URI: https://devenia.com/plugins/autoposter-for-linkedin/
  * Description: Automatically share posts to LinkedIn when published. Uses official LinkedIn API - no scraping, no bloat.
- * Version: 1.5.4
+ * Version: 1.5.12
  * Author: Devenia
  * Author URI: https://devenia.com/
  * License: GPL-2.0+
  * License URI: http://www.gnu.org/licenses/gpl-2.0.txt
- * Text Domain: devenia-linkedin-autoposter
+ * Text Domain: devenia-autoposter-for-linkedin
  */
 
 // Exit if accessed directly
@@ -16,11 +16,33 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('DLAP_VERSION', '1.5.4');
+define('DLAP_VERSION', '1.5.12');
 define('DLAP_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('DLAP_PLUGIN_URL', plugin_dir_url(__FILE__));
+define('DLAP_LINKEDIN_API_VERSION_DEFAULT', '202602');
+define('DLAP_LINKEDIN_API_VERSION_FALLBACKS', '202602,202601,202511,202510,202509,202508,202507,202506,202505,202504,202503');
 
-class Devenia_LinkedIn_Autoposter {
+/**
+ * Log debug message if WP_DEBUG is enabled.
+ *
+ * @param string $message The message to log.
+ */
+function dlap_log( $message ) {
+    if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+        // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- Intentional debug logging when WP_DEBUG is enabled
+        error_log( $message );
+    }
+}
+
+/**
+ * Plugin deactivation hook - clean up scheduled events.
+ */
+function dlap_deactivate() {
+    wp_clear_scheduled_hook( 'dlap_daily_check' );
+}
+register_deactivation_hook( __FILE__, 'dlap_deactivate' );
+
+class Dlap_LinkedIn_Autoposter {
 
     private static $instance = null;
 
@@ -28,6 +50,7 @@ class Devenia_LinkedIn_Autoposter {
     private $client_secret;
     private $access_token;
     private $token_expires;
+    private $linkedin_version;
 
     public static function get_instance() {
         if (null === self::$instance) {
@@ -47,6 +70,7 @@ class Devenia_LinkedIn_Autoposter {
         $this->client_secret = isset($options['client_secret']) ? $options['client_secret'] : '';
         $this->access_token = get_option('dlap_access_token', '');
         $this->token_expires = get_option('dlap_token_expires', 0);
+        $this->linkedin_version = get_option('dlap_linkedin_api_version', DLAP_LINKEDIN_API_VERSION_DEFAULT);
     }
 
     private function init_hooks() {
@@ -86,7 +110,7 @@ class Devenia_LinkedIn_Autoposter {
         if ($days_left < 3) {
             // Check if we already sent an email today
             $last_email = get_option('dlap_last_expiry_email', 0);
-            $today = date('Y-m-d');
+            $today = wp_date('Y-m-d');
 
             if ($last_email !== $today) {
                 $this->send_expiry_warning_email($days_left);
@@ -106,9 +130,9 @@ class Devenia_LinkedIn_Autoposter {
         $site_name = get_bloginfo('name');
         $settings_url = admin_url('options-general.php?page=dlap-settings');
 
-        $subject = "[{$site_name}] LinkedIn Autoposter token expires in {$days_left} days";
+        $subject = "[{$site_name}] Autoposter for LinkedIn token expires in {$days_left} days";
 
-        $message = "Your LinkedIn connection for the Devenia LinkedIn Autoposter plugin is about to expire.\n\n";
+        $message = "Your LinkedIn connection for the Devenia Autoposter for LinkedIn plugin is about to expire.\n\n";
         $message .= "Days remaining: {$days_left}\n\n";
         $message .= "Please reconnect to LinkedIn to continue auto-posting:\n";
         $message .= $settings_url . "\n\n";
@@ -126,6 +150,116 @@ class Devenia_LinkedIn_Autoposter {
             return;
         }
         wp_enqueue_media();
+
+        // Register a handle for our inline script (depends on media-editor)
+        wp_register_script('dlap-admin', false, array('media-editor'), DLAP_VERSION, true);
+        wp_enqueue_script('dlap-admin');
+
+        // Default image media uploader script
+        $default_image_js = "
+            jQuery(document).ready(function($) {
+                var mediaUploader;
+
+                $('#dlap_select_image').on('click', function(e) {
+                    e.preventDefault();
+
+                    if (mediaUploader) {
+                        mediaUploader.open();
+                        return;
+                    }
+
+                    mediaUploader = wp.media({
+                        title: 'Select Default LinkedIn Image',
+                        button: { text: 'Use This Image' },
+                        multiple: false
+                    });
+
+                    mediaUploader.on('select', function() {
+                        var attachment = mediaUploader.state().get('selection').first().toJSON();
+                        $('#dlap_default_image_id').val(attachment.id);
+                        $('#dlap_default_image_url').val(attachment.url);
+                        $('#dlap_image_preview').html('<img src=\"' + attachment.url + '\" style=\"max-width: 300px; max-height: 200px; border: 1px solid #ddd; padding: 5px;\">');
+                        $('#dlap_remove_image').show();
+                    });
+
+                    mediaUploader.open();
+                });
+
+                $('#dlap_remove_image').on('click', function(e) {
+                    e.preventDefault();
+                    $('#dlap_default_image_id').val('');
+                    $('#dlap_default_image_url').val('');
+                    $('#dlap_image_preview').html('');
+                    $(this).hide();
+                });
+            });
+        ";
+
+        // Gallery images media uploader script
+        $gallery_js = "
+            jQuery(document).ready(function($) {
+                var galleryFrame;
+
+                // Add images to gallery
+                $('#dlap_add_gallery_images').on('click', function(e) {
+                    e.preventDefault();
+
+                    if (galleryFrame) {
+                        galleryFrame.open();
+                        return;
+                    }
+
+                    galleryFrame = wp.media({
+                        title: 'Select LinkedIn Gallery Images',
+                        button: { text: 'Add to Gallery' },
+                        multiple: true
+                    });
+
+                    galleryFrame.on('select', function() {
+                        var selection = galleryFrame.state().get('selection');
+                        var currentIds = $('#dlap_gallery_ids').val() ? $('#dlap_gallery_ids').val().split(',').filter(Boolean) : [];
+
+                        selection.each(function(attachment) {
+                            attachment = attachment.toJSON();
+                            if (currentIds.indexOf(attachment.id.toString()) === -1) {
+                                currentIds.push(attachment.id);
+                                var thumb = attachment.sizes && attachment.sizes.thumbnail ? attachment.sizes.thumbnail.url : attachment.url;
+                                $('#dlap_gallery_preview').append(
+                                    '<div class=\"dlap-gallery-item\" data-id=\"' + attachment.id + '\" style=\"position: relative;\">' +
+                                    '<img src=\"' + thumb + '\" style=\"width: 100px; height: 100px; object-fit: cover; border: 1px solid #ddd;\">' +
+                                    '<span class=\"dlap-gallery-remove\" style=\"position: absolute; top: -5px; right: -5px; background: #d63638; color: white; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 14px;\">&times;</span>' +
+                                    '</div>'
+                                );
+                            }
+                        });
+
+                        $('#dlap_gallery_ids').val(currentIds.join(','));
+                    });
+
+                    galleryFrame.open();
+                });
+
+                // Remove single image from gallery
+                $(document).on('click', '.dlap-gallery-remove', function() {
+                    var \$item = $(this).parent();
+                    var removeId = \$item.data('id').toString();
+                    var currentIds = $('#dlap_gallery_ids').val().split(',').filter(Boolean);
+                    currentIds = currentIds.filter(function(id) { return id !== removeId; });
+                    $('#dlap_gallery_ids').val(currentIds.join(','));
+                    \$item.remove();
+                });
+
+                // Clear all gallery images
+                $('#dlap_clear_gallery').on('click', function(e) {
+                    e.preventDefault();
+                    $('#dlap_gallery_ids').val('');
+                    $('#dlap_gallery_preview').html('');
+                });
+            });
+        ";
+
+        wp_add_inline_script('dlap-admin', $default_image_js);
+        wp_add_inline_script('dlap-admin', $gallery_js);
     }
 
     /**
@@ -133,8 +267,8 @@ class Devenia_LinkedIn_Autoposter {
      */
     public function add_admin_menu() {
         add_options_page(
-            'LinkedIn Autoposter',
-            'LinkedIn Autoposter',
+            'Autoposter for LinkedIn',
+            'Autoposter for LinkedIn',
             'manage_options',
             'dlap-settings',
             array($this, 'render_settings_page')
@@ -282,13 +416,13 @@ class Devenia_LinkedIn_Autoposter {
         $token_days_left = $this->get_token_days_left();
         ?>
         <div class="wrap">
-            <h1>LinkedIn Autoposter</h1>
+            <h1>Autoposter for LinkedIn</h1>
 
-            <div class="dlap-status-box" style="background: #fff; padding: 15px; margin: 20px 0; border-left: 4px solid <?php echo $is_connected ? '#00a32a' : '#d63638'; ?>;">
+            <div class="dlap-status-box" style="background: #fff; padding: 15px; margin: 20px 0; border-left: 4px solid <?php echo esc_attr( $is_connected ? '#00a32a' : '#d63638' ); ?>;">
                 <h3 style="margin-top: 0;">Connection Status</h3>
                 <?php if ($is_connected): ?>
                     <p style="color: #00a32a;"><strong>Connected to LinkedIn</strong></p>
-                    <p>Token expires in <strong><?php echo $token_days_left; ?> days</strong></p>
+                    <p>Token expires in <strong><?php echo intval( $token_days_left ); ?> days</strong></p>
                     <?php if ($token_days_left < 3): ?>
                         <p style="color: #d63638;"><strong>Token expiring soon!</strong> Please reconnect.</p>
                     <?php endif; ?>
@@ -413,9 +547,8 @@ class Devenia_LinkedIn_Autoposter {
 
         foreach ($post_types as $post_type) {
             if ($post_type->name === 'attachment') continue;
-            $checked = in_array($post_type->name, $selected) ? 'checked' : '';
             echo '<label style="display: block; margin-bottom: 5px;">';
-            echo '<input type="checkbox" name="dlap_settings[post_types][]" value="' . esc_attr($post_type->name) . '" ' . $checked . '> ';
+            echo '<input type="checkbox" name="dlap_settings[post_types][]" value="' . esc_attr($post_type->name) . '" ' . checked( in_array( $post_type->name, $selected, true ), true, false ) . '> ';
             echo esc_html($post_type->label);
             echo '</label>';
         }
@@ -460,45 +593,6 @@ class Devenia_LinkedIn_Autoposter {
         </div>
         <p class="description">Fallback image if post has no featured image and no images in content.</p>
         <p class="description">Image priority: Featured Image → First image in post → Default Image → Site Logo</p>
-
-        <script>
-        jQuery(document).ready(function($) {
-            var mediaUploader;
-
-            $('#dlap_select_image').on('click', function(e) {
-                e.preventDefault();
-
-                if (mediaUploader) {
-                    mediaUploader.open();
-                    return;
-                }
-
-                mediaUploader = wp.media({
-                    title: 'Select Default LinkedIn Image',
-                    button: { text: 'Use This Image' },
-                    multiple: false
-                });
-
-                mediaUploader.on('select', function() {
-                    var attachment = mediaUploader.state().get('selection').first().toJSON();
-                    $('#dlap_default_image_id').val(attachment.id);
-                    $('#dlap_default_image_url').val(attachment.url);
-                    $('#dlap_image_preview').html('<img src="' + attachment.url + '" style="max-width: 300px; max-height: 200px; border: 1px solid #ddd; padding: 5px;">');
-                    $('#dlap_remove_image').show();
-                });
-
-                mediaUploader.open();
-            });
-
-            $('#dlap_remove_image').on('click', function(e) {
-                e.preventDefault();
-                $('#dlap_default_image_id').val('');
-                $('#dlap_default_image_url').val('');
-                $('#dlap_image_preview').html('');
-                $(this).hide();
-            });
-        });
-        </script>
         <?php
     }
 
@@ -534,7 +628,7 @@ class Devenia_LinkedIn_Autoposter {
             if ($total_images > 0):
             ?>
                 <p class="description" style="margin-top: 10px;">
-                    <strong>Rotation:</strong> Next post will use image <?php echo ($rotation_index % $total_images) + 1; ?> of <?php echo $total_images; ?>
+                    <strong>Rotation:</strong> Next post will use image <?php echo intval( ( $rotation_index % $total_images ) + 1 ); ?> of <?php echo intval( $total_images ); ?>
                 </p>
             <?php endif; ?>
         </div>
@@ -543,68 +637,6 @@ class Devenia_LinkedIn_Autoposter {
             <strong>Recommended image size:</strong> 1200 x 1200 pixels (square)<br>
             <span style="color: #666;">Square images take up more feed space = more attention. Also works: 1080 x 1350 (portrait). Max 8MB, JPG or PNG.</span>
         </div>
-
-        <script>
-        jQuery(document).ready(function($) {
-            var galleryFrame;
-
-            // Add images to gallery
-            $('#dlap_add_gallery_images').on('click', function(e) {
-                e.preventDefault();
-
-                if (galleryFrame) {
-                    galleryFrame.open();
-                    return;
-                }
-
-                galleryFrame = wp.media({
-                    title: 'Select LinkedIn Gallery Images',
-                    button: { text: 'Add to Gallery' },
-                    multiple: true
-                });
-
-                galleryFrame.on('select', function() {
-                    var selection = galleryFrame.state().get('selection');
-                    var currentIds = $('#dlap_gallery_ids').val() ? $('#dlap_gallery_ids').val().split(',').filter(Boolean) : [];
-
-                    selection.each(function(attachment) {
-                        attachment = attachment.toJSON();
-                        if (currentIds.indexOf(attachment.id.toString()) === -1) {
-                            currentIds.push(attachment.id);
-                            var thumb = attachment.sizes && attachment.sizes.thumbnail ? attachment.sizes.thumbnail.url : attachment.url;
-                            $('#dlap_gallery_preview').append(
-                                '<div class="dlap-gallery-item" data-id="' + attachment.id + '" style="position: relative;">' +
-                                '<img src="' + thumb + '" style="width: 100px; height: 100px; object-fit: cover; border: 1px solid #ddd;">' +
-                                '<span class="dlap-gallery-remove" style="position: absolute; top: -5px; right: -5px; background: #d63638; color: white; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 14px;">&times;</span>' +
-                                '</div>'
-                            );
-                        }
-                    });
-
-                    $('#dlap_gallery_ids').val(currentIds.join(','));
-                });
-
-                galleryFrame.open();
-            });
-
-            // Remove single image from gallery
-            $(document).on('click', '.dlap-gallery-remove', function() {
-                var $item = $(this).parent();
-                var removeId = $item.data('id').toString();
-                var currentIds = $('#dlap_gallery_ids').val().split(',').filter(Boolean);
-                currentIds = currentIds.filter(function(id) { return id !== removeId; });
-                $('#dlap_gallery_ids').val(currentIds.join(','));
-                $item.remove();
-            });
-
-            // Clear all gallery images
-            $('#dlap_clear_gallery').on('click', function(e) {
-                e.preventDefault();
-                $('#dlap_gallery_ids').val('');
-                $('#dlap_gallery_preview').html('');
-            });
-        });
-        </script>
         <?php
     }
 
@@ -668,38 +700,40 @@ class Devenia_LinkedIn_Autoposter {
      */
     public function handle_oauth_callback() {
         // Handle disconnect
-        if (isset($_GET['dlap_disconnect']) && wp_verify_nonce($_GET['_wpnonce'] ?? '', 'dlap_disconnect')) {
+        $nonce = isset( $_GET['_wpnonce'] ) ? sanitize_text_field( wp_unslash( $_GET['_wpnonce'] ) ) : '';
+        if ( isset( $_GET['dlap_disconnect'] ) && wp_verify_nonce( $nonce, 'dlap_disconnect' ) ) {
             delete_option('dlap_access_token');
             delete_option('dlap_token_expires');
             delete_option('dlap_member_id');
             delete_option('dlap_organizations');
-            wp_redirect(admin_url('options-general.php?page=dlap-settings&dlap_disconnected=1'));
+            wp_safe_redirect( admin_url( 'options-general.php?page=dlap-settings&dlap_disconnected=1' ) );
             exit;
         }
 
         // Handle test post
-        if (isset($_GET['dlap_test']) && wp_verify_nonce($_GET['_wpnonce'] ?? '', 'dlap_test')) {
+        if ( isset( $_GET['dlap_test'] ) && wp_verify_nonce( $nonce, 'dlap_test' ) ) {
             $result = $this->send_test_post();
             if ($result) {
-                wp_redirect(admin_url('options-general.php?page=dlap-settings&dlap_test_success=1'));
+                wp_safe_redirect( admin_url( 'options-general.php?page=dlap-settings&dlap_test_success=1' ) );
             } else {
                 $error = get_transient('dlap_test_error');
                 delete_transient('dlap_test_error');
-                wp_redirect(admin_url('options-general.php?page=dlap-settings&dlap_test_error=' . urlencode($error ?: 'Unknown error')));
+                wp_safe_redirect( admin_url( 'options-general.php?page=dlap-settings&dlap_test_error=' . urlencode( $error ? $error : 'Unknown error' ) ) );
             }
             exit;
         }
 
         // Handle OAuth callback
-        if (!isset($_GET['code']) || !isset($_GET['state'])) {
+        if ( ! isset( $_GET['code'] ) || ! isset( $_GET['state'] ) ) {
             return;
         }
 
-        if (!wp_verify_nonce($_GET['state'], 'dlap_oauth')) {
+        $state = isset( $_GET['state'] ) ? sanitize_text_field( wp_unslash( $_GET['state'] ) ) : '';
+        if ( ! wp_verify_nonce( $state, 'dlap_oauth' ) ) {
             return;
         }
 
-        $code = sanitize_text_field($_GET['code']);
+        $code = isset( $_GET['code'] ) ? sanitize_text_field( wp_unslash( $_GET['code'] ) ) : '';
 
         // Exchange code for access token
         $response = wp_remote_post('https://www.linkedin.com/oauth/v2/accessToken', array(
@@ -713,7 +747,7 @@ class Devenia_LinkedIn_Autoposter {
         ));
 
         if (is_wp_error($response)) {
-            wp_redirect(admin_url('options-general.php?page=dlap-settings&dlap_error=' . urlencode($response->get_error_message())));
+            wp_safe_redirect( admin_url( 'options-general.php?page=dlap-settings&dlap_error=' . urlencode( $response->get_error_message() ) ) );
             exit;
         }
 
@@ -734,11 +768,11 @@ class Devenia_LinkedIn_Autoposter {
             $organizations = $this->get_admin_organizations();
             update_option('dlap_organizations', $organizations);
 
-            wp_redirect(admin_url('options-general.php?page=dlap-settings&dlap_connected=1'));
+            wp_safe_redirect( admin_url( 'options-general.php?page=dlap-settings&dlap_connected=1' ) );
             exit;
         } else {
             $error = isset($body['error_description']) ? $body['error_description'] : 'Unknown error';
-            wp_redirect(admin_url('options-general.php?page=dlap-settings&dlap_error=' . urlencode($error)));
+            wp_safe_redirect( admin_url( 'options-general.php?page=dlap-settings&dlap_error=' . urlencode( $error ) ) );
             exit;
         }
     }
@@ -784,7 +818,7 @@ class Devenia_LinkedIn_Autoposter {
             if (!$member_id) {
                 $errors[] = 'No member ID for personal profile';
             } else {
-                $content = "Test post from Devenia LinkedIn Autoposter plugin.\n\nThis confirms the connection is working and posts will appear on your personal profile.\n\n" . get_bloginfo('url');
+                $content = "Test post from Devenia Autoposter for LinkedIn plugin.\n\nThis confirms the connection is working and posts will appear on your personal profile.\n\n" . get_bloginfo('url');
                 $result = $this->post_to_linkedin($access_token, 'urn:li:person:' . $member_id, $content);
                 if ($result) {
                     $results['personal'] = true;
@@ -799,7 +833,7 @@ class Devenia_LinkedIn_Autoposter {
             if (!$organization_id) {
                 $errors[] = 'No organization ID for company page';
             } else {
-                $content = "Test post from Devenia LinkedIn Autoposter plugin.\n\nThis confirms the connection is working and posts will appear on your company page.\n\n" . get_bloginfo('url');
+                $content = "Test post from Devenia Autoposter for LinkedIn plugin.\n\nThis confirms the connection is working and posts will appear on your company page.\n\n" . get_bloginfo('url');
                 $result = $this->post_to_linkedin($access_token, 'urn:li:organization:' . $organization_id, $content);
                 if ($result) {
                     $results['organization'] = true;
@@ -829,15 +863,20 @@ class Devenia_LinkedIn_Autoposter {
         $organizations = array();
 
         // Get organization access control (admin roles)
-        $response = wp_remote_get('https://api.linkedin.com/rest/organizationAcls?q=roleAssignee&role=ADMINISTRATOR&projection=(elements*(organization~(localizedName)))', array(
-            'headers' => array(
-                'Authorization' => 'Bearer ' . $this->access_token,
-                'X-Restli-Protocol-Version' => '2.0.0',
-                'LinkedIn-Version' => '202501',
-            ),
-        ));
+        $response = $this->linkedin_rest_request(
+            'GET',
+            'https://api.linkedin.com/rest/organizationAcls?q=roleAssignee&role=ADMINISTRATOR',
+            $this->access_token
+        );
 
         if (is_wp_error($response)) {
+            return $organizations;
+        }
+
+        $response_code = wp_remote_retrieve_response_code($response);
+        if ($response_code !== 200) {
+            dlap_log('DLAP LinkedIn API - Organization ACL request failed with code: ' . $response_code);
+            dlap_log('DLAP LinkedIn API - Organization ACL response body: ' . wp_remote_retrieve_body($response));
             return $organizations;
         }
 
@@ -849,7 +888,7 @@ class Devenia_LinkedIn_Autoposter {
                 if (isset($element['organization'])) {
                     $org_urn = $element['organization'];
                     $org_id = str_replace('urn:li:organization:', '', $org_urn);
-                    $org_name = isset($element['organization~']['localizedName']) ? $element['organization~']['localizedName'] : 'Unknown';
+                    $org_name = isset($element['organization~']['localizedName']) ? $element['organization~']['localizedName'] : ('Organization ' . $org_id);
                     $organizations[] = array(
                         'id' => $org_id,
                         'name' => $org_name,
@@ -875,6 +914,122 @@ class Devenia_LinkedIn_Autoposter {
         if (!$this->token_expires) return 0;
         $seconds_left = $this->token_expires - time();
         return max(0, floor($seconds_left / 86400));
+    }
+
+    /**
+     * Build prioritized API version list for LinkedIn REST requests.
+     */
+    private function get_linkedin_api_versions() {
+        $versions = array(
+            $this->linkedin_version,
+            DLAP_LINKEDIN_API_VERSION_DEFAULT,
+        );
+
+        $fallback_versions = explode(',', DLAP_LINKEDIN_API_VERSION_FALLBACKS);
+        foreach ($fallback_versions as $fallback_version) {
+            $versions[] = trim($fallback_version);
+        }
+
+        $normalized_versions = array();
+        foreach ($versions as $version) {
+            if (!is_string($version)) {
+                continue;
+            }
+            $version = trim($version);
+            if (!preg_match('/^\d{6}$/', $version)) {
+                continue;
+            }
+            if (!in_array($version, $normalized_versions, true)) {
+                $normalized_versions[] = $version;
+            }
+        }
+
+        if (empty($normalized_versions)) {
+            $normalized_versions[] = DLAP_LINKEDIN_API_VERSION_DEFAULT;
+        }
+
+        return $normalized_versions;
+    }
+
+    /**
+     * Save a known working LinkedIn API version.
+     */
+    private function set_linkedin_api_version($version) {
+        if (!is_string($version) || !preg_match('/^\d{6}$/', $version)) {
+            return;
+        }
+
+        if ($this->linkedin_version === $version) {
+            return;
+        }
+
+        $this->linkedin_version = $version;
+        update_option('dlap_linkedin_api_version', $version);
+        dlap_log('DLAP LinkedIn API - Persisted working API version: ' . $version);
+    }
+
+    /**
+     * Build common headers for LinkedIn REST endpoints.
+     */
+    private function get_linkedin_rest_headers($access_token, $version, $extra_headers = array()) {
+        $headers = array(
+            'Authorization' => 'Bearer ' . $access_token,
+            'X-Restli-Protocol-Version' => '2.0.0',
+            'LinkedIn-Version' => $version,
+        );
+
+        if (is_array($extra_headers) && !empty($extra_headers)) {
+            $headers = array_merge($headers, $extra_headers);
+        }
+
+        return $headers;
+    }
+
+    /**
+     * Check if LinkedIn rejected the requested API version.
+     */
+    private function is_nonexistent_linkedin_version_error($response_code, $response_body) {
+        if ((int) $response_code !== 426) {
+            return false;
+        }
+
+        $decoded = json_decode($response_body, true);
+        return is_array($decoded) && isset($decoded['code']) && $decoded['code'] === 'NONEXISTENT_VERSION';
+    }
+
+    /**
+     * Send LinkedIn REST request with version fallback on retired versions.
+     */
+    private function linkedin_rest_request($method, $url, $access_token, $args = array()) {
+        $request_args = is_array($args) ? $args : array();
+        $extra_headers = isset($request_args['headers']) && is_array($request_args['headers']) ? $request_args['headers'] : array();
+        unset($request_args['headers']);
+
+        $last_response = false;
+
+        foreach ($this->get_linkedin_api_versions() as $version) {
+            $request_args['method'] = $method;
+            $request_args['headers'] = $this->get_linkedin_rest_headers($access_token, $version, $extra_headers);
+
+            $response = wp_remote_request($url, $request_args);
+            if (is_wp_error($response)) {
+                return $response;
+            }
+
+            $response_code = wp_remote_retrieve_response_code($response);
+            $response_body = wp_remote_retrieve_body($response);
+
+            if ($this->is_nonexistent_linkedin_version_error($response_code, $response_body)) {
+                dlap_log('DLAP LinkedIn API - Version ' . $version . ' is inactive, trying fallback.');
+                $last_response = $response;
+                continue;
+            }
+
+            $this->set_linkedin_api_version($version);
+            return $response;
+        }
+
+        return $last_response;
     }
 
     /**
@@ -1153,49 +1308,51 @@ class Devenia_LinkedIn_Autoposter {
      * Required for image-only posts (maximum reach mode)
      */
     private function upload_image_to_linkedin($access_token, $owner_urn, $image_url) {
-        error_log('DLAP Image Upload - Starting upload for: ' . $image_url);
-        error_log('DLAP Image Upload - Owner URN: ' . $owner_urn);
+        dlap_log('DLAP Image Upload - Starting upload for: ' . $image_url);
+        dlap_log('DLAP Image Upload - Owner URN: ' . $owner_urn);
 
         // Step 1: Initialize upload to get upload URL and image URN
-        $init_response = wp_remote_post('https://api.linkedin.com/rest/images?action=initializeUpload', array(
-            'headers' => array(
-                'Authorization' => 'Bearer ' . $access_token,
-                'X-Restli-Protocol-Version' => '2.0.0',
-                'LinkedIn-Version' => '202501',
-                'Content-Type' => 'application/json',
-            ),
-            'body' => wp_json_encode(array(
-                'initializeUploadRequest' => array(
-                    'owner' => $owner_urn,
+        $init_response = $this->linkedin_rest_request(
+            'POST',
+            'https://api.linkedin.com/rest/images?action=initializeUpload',
+            $access_token,
+            array(
+                'headers' => array(
+                    'Content-Type' => 'application/json',
                 ),
-            )),
-        ));
+                'body' => wp_json_encode(array(
+                    'initializeUploadRequest' => array(
+                        'owner' => $owner_urn,
+                    ),
+                )),
+            )
+        );
 
         if (is_wp_error($init_response)) {
-            error_log('DLAP Image Upload - Init error: ' . $init_response->get_error_message());
+            dlap_log('DLAP Image Upload - Init error: ' . $init_response->get_error_message());
             return false;
         }
 
         $init_code = wp_remote_retrieve_response_code($init_response);
         $init_body = wp_remote_retrieve_body($init_response);
-        error_log('DLAP Image Upload - Init response code: ' . $init_code);
-        error_log('DLAP Image Upload - Init response body: ' . $init_body);
+        dlap_log('DLAP Image Upload - Init response code: ' . $init_code);
+        dlap_log('DLAP Image Upload - Init response body: ' . $init_body);
 
         if ($init_code !== 200) {
-            error_log('DLAP Image Upload - Init failed with code: ' . $init_code);
+            dlap_log('DLAP Image Upload - Init failed with code: ' . $init_code);
             return false;
         }
 
         $init_data = json_decode($init_body, true);
         if (!isset($init_data['value']['uploadUrl']) || !isset($init_data['value']['image'])) {
-            error_log('DLAP Image Upload - Missing uploadUrl or image in response');
+            dlap_log('DLAP Image Upload - Missing uploadUrl or image in response');
             return false;
         }
 
         $upload_url = $init_data['value']['uploadUrl'];
         $image_urn = $init_data['value']['image'];
-        error_log('DLAP Image Upload - Got upload URL: ' . $upload_url);
-        error_log('DLAP Image Upload - Got image URN: ' . $image_urn);
+        dlap_log('DLAP Image Upload - Got upload URL: ' . $upload_url);
+        dlap_log('DLAP Image Upload - Got image URN: ' . $image_urn);
 
         // Step 2: Download image from WordPress
         $image_response = wp_remote_get($image_url, array(
@@ -1203,7 +1360,7 @@ class Devenia_LinkedIn_Autoposter {
         ));
 
         if (is_wp_error($image_response)) {
-            error_log('DLAP Image Upload - Failed to download image: ' . $image_response->get_error_message());
+            dlap_log('DLAP Image Upload - Failed to download image: ' . $image_response->get_error_message());
             return false;
         }
 
@@ -1211,11 +1368,11 @@ class Devenia_LinkedIn_Autoposter {
         $content_type = wp_remote_retrieve_header($image_response, 'content-type');
         if (empty($content_type)) {
             // Guess from URL extension
-            $ext = strtolower(pathinfo(parse_url($image_url, PHP_URL_PATH), PATHINFO_EXTENSION));
+            $ext = strtolower( pathinfo( wp_parse_url( $image_url, PHP_URL_PATH ), PATHINFO_EXTENSION ) );
             $mime_types = array('jpg' => 'image/jpeg', 'jpeg' => 'image/jpeg', 'png' => 'image/png', 'gif' => 'image/gif', 'webp' => 'image/webp');
             $content_type = isset($mime_types[$ext]) ? $mime_types[$ext] : 'image/jpeg';
         }
-        error_log('DLAP Image Upload - Downloaded image, size: ' . strlen($image_data) . ', type: ' . $content_type);
+        dlap_log('DLAP Image Upload - Downloaded image, size: ' . strlen($image_data) . ', type: ' . $content_type);
 
         // Step 3: Upload image to LinkedIn
         $upload_response = wp_remote_request($upload_url, array(
@@ -1229,21 +1386,21 @@ class Devenia_LinkedIn_Autoposter {
         ));
 
         if (is_wp_error($upload_response)) {
-            error_log('DLAP Image Upload - Upload error: ' . $upload_response->get_error_message());
+            dlap_log('DLAP Image Upload - Upload error: ' . $upload_response->get_error_message());
             return false;
         }
 
         $upload_code = wp_remote_retrieve_response_code($upload_response);
-        error_log('DLAP Image Upload - Upload response code: ' . $upload_code);
+        dlap_log('DLAP Image Upload - Upload response code: ' . $upload_code);
 
         // LinkedIn returns 201 on successful upload
         if ($upload_code === 201 || $upload_code === 200) {
-            error_log('DLAP Image Upload - Success! Image URN: ' . $image_urn);
+            dlap_log('DLAP Image Upload - Success! Image URN: ' . $image_urn);
             return $image_urn;
         }
 
-        error_log('DLAP Image Upload - Upload failed with code: ' . $upload_code);
-        error_log('DLAP Image Upload - Upload response body: ' . wp_remote_retrieve_body($upload_response));
+        dlap_log('DLAP Image Upload - Upload failed with code: ' . $upload_code);
+        dlap_log('DLAP Image Upload - Upload response body: ' . wp_remote_retrieve_body($upload_response));
         return false;
     }
 
@@ -1289,15 +1446,17 @@ class Devenia_LinkedIn_Autoposter {
             );
         }
 
-        $response = wp_remote_post('https://api.linkedin.com/rest/posts', array(
-            'headers' => array(
-                'Authorization' => 'Bearer ' . $access_token,
-                'X-Restli-Protocol-Version' => '2.0.0',
-                'LinkedIn-Version' => '202501',
-                'Content-Type' => 'application/json',
-            ),
-            'body' => wp_json_encode($body),
-        ));
+        $response = $this->linkedin_rest_request(
+            'POST',
+            'https://api.linkedin.com/rest/posts',
+            $access_token,
+            array(
+                'headers' => array(
+                    'Content-Type' => 'application/json',
+                ),
+                'body' => wp_json_encode($body),
+            )
+        );
 
         if (is_wp_error($response)) {
             set_transient('dlap_last_error', $response->get_error_message(), 60);
@@ -1324,7 +1483,7 @@ class Devenia_LinkedIn_Autoposter {
         foreach ($post_types as $post_type) {
             add_meta_box(
                 'dlap_meta_box',
-                'LinkedIn Autoposter',
+                'Autoposter for LinkedIn',
                 array($this, 'render_meta_box'),
                 $post_type,
                 'side',
@@ -1355,7 +1514,7 @@ class Devenia_LinkedIn_Autoposter {
         <?php if ($shared): ?>
             <p style="color: #00a32a;">
                 <strong>Shared to LinkedIn</strong><br>
-                <?php echo esc_html(date('Y-m-d H:i', $shared)); ?>
+                <?php echo esc_html( wp_date( 'Y-m-d H:i', $shared ) ); ?>
             </p>
         <?php endif; ?>
 
@@ -1378,56 +1537,77 @@ class Devenia_LinkedIn_Autoposter {
     /**
      * Save meta box
      */
-    public function save_meta_box($post_id) {
-        if (!isset($_POST['dlap_meta_box_nonce']) || !wp_verify_nonce($_POST['dlap_meta_box_nonce'], 'dlap_meta_box')) {
+    public function save_meta_box( $post_id ) {
+        $nonce = isset( $_POST['dlap_meta_box_nonce'] ) ? sanitize_text_field( wp_unslash( $_POST['dlap_meta_box_nonce'] ) ) : '';
+        if ( ! wp_verify_nonce( $nonce, 'dlap_meta_box' ) ) {
             return;
         }
 
-        if (defined('DOING_AUTOSAVE') && DOING_AUTOSAVE) {
+        if ( defined( 'DOING_AUTOSAVE' ) && DOING_AUTOSAVE ) {
             return;
         }
 
-        if (!current_user_can('edit_post', $post_id)) {
+        if ( ! current_user_can( 'edit_post', $post_id ) ) {
             return;
         }
 
-        $disabled = isset($_POST['dlap_disable']) ? '1' : '';
-        update_post_meta($post_id, '_dlap_disable', $disabled);
+        $disabled = isset( $_POST['dlap_disable'] ) ? '1' : '';
+        update_post_meta( $post_id, '_dlap_disable', $disabled );
     }
 
     /**
      * Admin notices
      */
     public function admin_notices() {
-        if (isset($_GET['dlap_connected'])) {
+        // Only show action result notices on our settings page
+        // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Display only, nonce verified during action
+        $page = isset( $_GET['page'] ) ? sanitize_text_field( wp_unslash( $_GET['page'] ) ) : '';
+        if ( 'dlap-settings' !== $page ) {
+            // Still show token expiry warning on all admin pages
+            if ( $this->is_connected() && $this->get_token_days_left() < 3 ) {
+                echo '<div class="notice notice-warning"><p>Your LinkedIn connection expires in ' . intval( $this->get_token_days_left() ) . ' days. <a href="' . esc_url( admin_url( 'options-general.php?page=dlap-settings' ) ) . '">Reconnect now</a>.</p></div>';
+            }
+            return;
+        }
+
+        // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Display only, action was nonce-verified before redirect
+        if ( isset( $_GET['dlap_connected'] ) ) {
             echo '<div class="notice notice-success is-dismissible"><p>Successfully connected to LinkedIn!</p></div>';
         }
 
-        if (isset($_GET['dlap_disconnected'])) {
+        // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Display only, action was nonce-verified before redirect
+        if ( isset( $_GET['dlap_disconnected'] ) ) {
             echo '<div class="notice notice-info is-dismissible"><p>Disconnected from LinkedIn.</p></div>';
         }
 
-        if (isset($_GET['dlap_error'])) {
-            echo '<div class="notice notice-error is-dismissible"><p>LinkedIn error: ' . esc_html($_GET['dlap_error']) . '</p></div>';
+        // phpcs:disable WordPress.Security.NonceVerification.Recommended -- Display only, action was nonce-verified before redirect
+        if ( isset( $_GET['dlap_error'] ) ) {
+            $error = sanitize_text_field( wp_unslash( $_GET['dlap_error'] ) );
+            echo '<div class="notice notice-error is-dismissible"><p>LinkedIn error: ' . esc_html( $error ) . '</p></div>';
+        }
+        // phpcs:enable WordPress.Security.NonceVerification.Recommended
+
+        // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Display only, action was nonce-verified before redirect
+        if ( isset( $_GET['dlap_test_success'] ) ) {
+            $options = get_option( 'dlap_settings', array() );
+            $post_target = isset( $options['post_target'] ) ? $options['post_target'] : 'personal';
+            $target_text = 'both' === $post_target ? 'personal profile and company page' : ( 'organization' === $post_target ? 'company page' : 'personal profile' );
+            echo '<div class="notice notice-success is-dismissible"><p>Test post sent successfully to ' . esc_html( $target_text ) . '! Check your LinkedIn to confirm.</p></div>';
         }
 
-        if (isset($_GET['dlap_test_success'])) {
-            $options = get_option('dlap_settings', array());
-            $post_target = isset($options['post_target']) ? $options['post_target'] : 'personal';
-            $target_text = $post_target === 'both' ? 'personal profile and company page' : ($post_target === 'organization' ? 'company page' : 'personal profile');
-            echo '<div class="notice notice-success is-dismissible"><p>Test post sent successfully to ' . esc_html($target_text) . '! Check your LinkedIn to confirm.</p></div>';
+        // phpcs:disable WordPress.Security.NonceVerification.Recommended -- Display only, action was nonce-verified before redirect
+        if ( isset( $_GET['dlap_test_error'] ) ) {
+            $error = sanitize_text_field( wp_unslash( $_GET['dlap_test_error'] ) );
+            echo '<div class="notice notice-error is-dismissible"><p>Test post failed: ' . esc_html( $error ) . '</p></div>';
         }
-
-        if (isset($_GET['dlap_test_error'])) {
-            echo '<div class="notice notice-error is-dismissible"><p>Test post failed: ' . esc_html($_GET['dlap_test_error']) . '</p></div>';
-        }
+        // phpcs:enable WordPress.Security.NonceVerification.Recommended
 
         // Warn about expiring token
-        if ($this->is_connected() && $this->get_token_days_left() < 3) {
-            echo '<div class="notice notice-warning"><p>Your LinkedIn connection expires in ' . $this->get_token_days_left() . ' days. <a href="' . esc_url(admin_url('options-general.php?page=dlap-settings')) . '">Reconnect now</a>.</p></div>';
+        if ( $this->is_connected() && $this->get_token_days_left() < 3 ) {
+            echo '<div class="notice notice-warning"><p>Your LinkedIn connection expires in ' . intval( $this->get_token_days_left() ) . ' days. <a href="' . esc_url( admin_url( 'options-general.php?page=dlap-settings' ) ) . '">Reconnect now</a>.</p></div>';
         }
     }
 }
 
 // Initialize plugin
-Devenia_LinkedIn_Autoposter::get_instance();
+Dlap_LinkedIn_Autoposter::get_instance();
