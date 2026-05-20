@@ -4,7 +4,7 @@ Contributors: basicus
 Donate link: https://devenia.com/
 Tags: linkedin, social, autoposter, share, automation
 Requires at least: 5.4
-Tested up to: 6.9
+Tested up to: 7.0
 Requires PHP: 7.4
 Stable tag: 1.5.13
 License: GPLv2 or later
